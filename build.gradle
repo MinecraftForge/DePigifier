@@ -1,0 +1,93 @@
+plugins {
+    id 'java'
+    id 'maven-publish'
+    id 'org.ajoberstar.reckon' version '0.9.0'
+    id 'org.ajoberstar.grgit' version '3.1.1'
+    id 'com.github.ben-manes.versions' version '0.21.0'
+}
+
+group 'net.minecraftforge'
+version '0.1'
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+repositories {
+    mavenCentral()
+}
+
+test {
+    useJUnitPlatform()
+}
+
+dependencies {
+    testImplementation('org.junit.jupiter:junit-jupiter-api:5.4.+')
+    testImplementation('org.powermock:powermock-core:2.0+')
+    implementation('net.sf.jopt-simple:jopt-simple:5.0.4')
+    implementation('com.machinezoo.noexception:noexception:1.3.2')
+    implementation('org.slf4j:slf4j-api:1.7.26')
+    implementation('org.slf4j:slf4j-simple:1.7.26')
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            pom {
+                name = 'Depigifier'
+                description = 'Remaps SRG files based on Proguard data'
+                url = 'https://github.com/MinecraftForge/Depigifier'
+                scm {
+                    url = 'https://github.com/MinecraftForge/Depigifier'
+                    connection = 'scm:git:git://github.com/MinecraftForge/Depigifier.git'
+                    developerConnection = 'scm:git:git@github.com:MinecraftForge/Depigifier.git'
+                }
+                issueManagement {
+                    system = 'github'
+                    url = 'https://github.com/MinecraftForge/Depigifier/issues'
+                }
+
+                licenses {
+                    license {
+                        name = 'LGPLv2.1'
+                        url = 'https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id = 'cpw'
+                        name = 'cpw'
+                    }
+                    developer {
+                        id = 'LexManos'
+                        name = 'LexManos'
+                    }
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            credentials {
+                username project.properties.forgeMavenUser?:'fake'
+                password project.properties.forgeMavenPassword?:'news'
+            }
+            url 'http://files.minecraftforge.net/maven/manage/upload'
+        }
+    }
+}
+
+dependencyUpdates.resolutionStrategy {
+    componentSelection { rules ->
+        rules.all { ComponentSelection selection ->
+            boolean rejected = ['alpha', 'beta', 'rc', 'cr', 'm', 'preview'].any { qualifier ->
+                selection.candidate.version ==~ /(?i).*[.-]${qualifier}[.\d-]*/
+            }
+            if (rejected) {
+                selection.reject('Release candidate')
+            }
+        }
+    }
+}
+
