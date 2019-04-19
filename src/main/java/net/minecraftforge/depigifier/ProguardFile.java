@@ -41,19 +41,21 @@ public class ProguardFile {
             } else if (line.indexOf("(") > 0) { // METHOD
                 final Matcher methodparts = methodParts.matcher(pairs[0]);
                 if (methodparts.matches()) {
-                    final Method method = current.addMethod(new Method(methodparts.group(4), pairs[1], "("+methodparts.group(5) + ")"+methodparts.group(3),
+                    final Method method = current.addMethod(new Method(methodparts.group(4), pairs[1], methodparts.group(5), methodparts.group(3),
                             Exceptions.silence().get(()->Integer.parseInt(methodparts.group(1))).orElse(0),
-                            Exceptions.silence().get(()->Integer.parseInt(methodparts.group(2))).orElse(0)));
+                            Exceptions.silence().get(()->Integer.parseInt(methodparts.group(2))).orElse(0)), this);
                     LOGGER.info("Method {}", method);
                 } else {
                     throw new RuntimeException("Badly formatted method line: "+line);
                 }
             } else {
                 final String[] fieldparts = pairs[0].trim().split(" ");
-                final Field field = current.addField(new Field(fieldparts[1], pairs[1], fieldparts[0]));
+                final Field field = current.addField(new Field(fieldparts[1], pairs[1], fieldparts[0]), this);
                 LOGGER.info("Field {}", field);
             }
         }
+
+        classes.values().forEach(cl-> cl.buildObfLookups(this));
     }
 
     public Set<String> getClassNames() {

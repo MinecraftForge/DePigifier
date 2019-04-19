@@ -29,11 +29,14 @@ public class TSRGFile {
         for (String line: lines) {
             String[] pairs = line.trim().split(" ");
             if (!line.startsWith("\t")) { // CLASS
-                current = proguardFile.getObfClass(pairs[0].replace('/','.'));
-                current.setSrgName(pairs[1].replace('/','.'));
-                LOGGER.info("Class {} ({}) -> {}", current, pairs[0].replace('/', '.'), pairs[1].replace('/','.'));
+                final String obfClassName = pairs[0].replace('/', '.');
+                final String srgClassName = pairs[1].replace('/', '.');
+                current = proguardFile.getObfClass(obfClassName);
+                current.setSrgName(srgClassName);
+                LOGGER.info("Class {} ({}) -> {}", current, obfClassName, srgClassName);
             } else if (line.indexOf("(") > 0) { // METHOD
-
+                Method method = current.findObfMethod(pairs[0], pairs[1]);
+                method.setSrgName(pairs[2]);
             } else {
             }
         }

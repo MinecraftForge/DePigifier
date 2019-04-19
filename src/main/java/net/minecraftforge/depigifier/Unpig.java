@@ -50,7 +50,7 @@ public class Unpig {
         final ProguardFile oldProguard = new ProguardFile(oldPG);
         final ProguardFile newProguard = new ProguardFile(newPG);
         final TSRGFile tsrgFile = new TSRGFile(srgFile, oldProguard);
-        Comparer comp = new Comparer(oldProguard, newProguard);
+        Matcher comp = new Matcher(oldProguard, newProguard, output);
         comp.computeClassListDifferences();
         comp.compareExistingClasses();
     }
