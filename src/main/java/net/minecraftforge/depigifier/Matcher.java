@@ -11,6 +11,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class Matcher {
@@ -19,8 +23,7 @@ public class Matcher {
     private final ProguardFile oldProguard;
     private final ProguardFile newProguard;
     private final Path outputDir;
-    private Set<Class> newClasses;
-    private Set<Map.Entry<Class,Class>> existingClasses;
+    private List<Class> existingClasses;
 
     public Matcher(final ProguardFile oldProguard, final ProguardFile newProguard, final Path output) {
         this.oldProguard = oldProguard;
@@ -28,36 +31,36 @@ public class Matcher {
         this.outputDir = output;
     }
 
+    private static String fieldToTSRGString(Field f) {
+        return f.getOwner().getProguardName().replace('.', '/') + " " + f.getProguardName();
+    }
+
+    private static String methodToTSRGString(Method m) {
+        return m.getOwner().getProguardName().replace('.', '/') + " " + m.getTSRGName();
+    }
+
     public void computeClassListDifferences() {
-        final Set<String> oldNames = oldProguard.getClassNames();
-        final Set<String> newNames = newProguard.getClassNames();
-        final HashSet<String> newClasses = new HashSet<>(newNames);
-        newClasses.removeAll(oldNames);
-        this.newClasses = newClasses.stream().map(newProguard::getClass).collect(Collectors.toSet());
-        final HashSet<String> existingClasses = new HashSet<>(newNames);
-        existingClasses.removeAll(newClasses);
-        this.existingClasses = existingClasses.stream().
-                map(n->new HashMap.SimpleImmutableEntry<>(newProguard.getClass(n), oldProguard.getClass(n))).
-                collect(Collectors.toSet());
-        this.existingClasses.forEach(e->e.getKey().setMatchedOldValue(e.getValue()));
-        LOGGER.info("Only in new {}", newClasses.size());
-        final Path classesOut = outputDir.resolve("newclasses.txt");
-        Exceptions.sneak().run(()->Files.write(classesOut, newClasses, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE));
+        final List<Class> newClasses = new ArrayList<>();
+        final List<Class> missingClasses = new ArrayList<>();
+        this.existingClasses = new ArrayList<>();
+        differenceSet(oldProguard::getClassNames, newProguard::getClassNames, oldProguard::getClass, newProguard::getClass, (o,n)->n.setMatchedOldValue(o), ()->newClasses, ()-> existingClasses, ()-> missingClasses);
+        writeFile(outputDir.resolve("newclasses.txt"), listBuilder(()->newClasses, Class::getProguardName));
+        writeFile(outputDir.resolve("missingclasses.txt"), listBuilder(()->missingClasses, Class::getProguardName));
     }
 
     public void compareExistingClasses() {
-        List<Field> newFields = new ArrayList<>();
-        List<Method> newMethods = new ArrayList<>();
-        existingClasses.forEach(entry -> compareClass(entry, newFields, newMethods));
-        final Path newFieldsOut = outputDir.resolve("newfields.txt");
-        final List<String> newFieldList = newFields.stream().map(f->f.getOwner().getProguardName().replace('.','/')+" "+f.getProguardName()).collect(Collectors.toList());
-        Exceptions.sneak().run(()->Files.write(newFieldsOut, newFieldList, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE));
-        final Path newMethodsOut = outputDir.resolve("newmethods.txt");
-        final List<String> newMethodList = newMethods.stream().map(m->m.getOwner().getProguardName().replace('.','/')+" "+m.getTSRGName()).collect(Collectors.toList());
-        Exceptions.sneak().run(()->Files.write(newMethodsOut, newMethodList, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE));
+        final List<Field> newFields = new ArrayList<>();
+        final List<Method> newMethods = new ArrayList<>();
+        final List<Field> missingFields = new ArrayList<>();
+        final List<Method> missingMethods = new ArrayList<>();
+        existingClasses.forEach(entry -> compareClass(entry, newFields, newMethods, missingFields, missingMethods));
+        writeFile(outputDir.resolve("newfields.txt"), listBuilder(()->newFields, Matcher::fieldToTSRGString));
+        writeFile(outputDir.resolve("missingfields.txt"), listBuilder(()->missingFields, Matcher::fieldToTSRGString));
+        writeFile(outputDir.resolve("newmethods.txt"), listBuilder(()->newMethods, Matcher::methodToTSRGString));
+        writeFile(outputDir.resolve("missingmethods.txt"), listBuilder(()->missingMethods, Matcher::methodToTSRGString));
         final Path tsrgOut = outputDir.resolve("oldtonew.tsrg");
         final List<String> tsrgLines = new ArrayList<>();
-        existingClasses.stream().map(Map.Entry::getKey).sorted(Comparator.comparing(aClass -> aClass.getMatchedOldValue().getObfName(), Comparator.comparingInt(String::length).thenComparing(String::compareTo))).forEach(nw->{
+        existingClasses.stream().sorted(Comparator.comparing(aClass -> aClass.getMatchedOldValue().getObfName(), Comparator.comparingInt(String::length).thenComparing(String::compareTo))).forEach(nw->{
             tsrgLines.add(nw.getMatchedOldValue().getObfName().replace('.','/') + " " +nw.getObfName().replace('.','/'));
             tsrgLines.addAll(nw.getFields().stream().filter(f->Objects.nonNull(f.getMatchedOldValue())).map(f->"\t"+f.getMatchedOldValue().getObfName()+" " + f.getObfName()).sorted().collect(Collectors.toList()));
             tsrgLines.addAll(nw.getMethods().stream().filter(m->Objects.nonNull(m.getMatchedOldValue())).map(m->"\t"+m.getMatchedOldValue().getTSRGObfName(oldProguard)+" " + m.getObfName()).sorted().collect(Collectors.toList()));
@@ -65,37 +68,35 @@ public class Matcher {
         Exceptions.sneak().run(()->Files.write(tsrgOut, tsrgLines, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE));
     }
 
-    private void compareClass(final Map.Entry<Class, Class> entry, final List<Field> newFieldTracked, final List<Method> newMethodTracked) {
-        final Class old = entry.getValue();
-        final Class nw = entry.getKey();
+    private <T> Supplier<List<String>> listBuilder(final Supplier<Collection<T>> t, final Function<T, String> stringFunction) {
+        return () -> t.get().stream().map(stringFunction).sorted().collect(Collectors.toList());
+    }
+    private void writeFile(final Path path, final Supplier<List<String>> lines) {
+        Exceptions.sneak().run(()->Files.write(path, lines.get(), StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE));
+    }
 
-        final Set<String> oldFieldNames = old.getFieldNames();
-        final Set<String> newFieldNames = nw.getFieldNames();
-        final HashSet<String> newFields = new HashSet<>(newFieldNames);
-        newFields.removeAll(oldFieldNames);
-        LOGGER.info("New fields in {} : {}", nw, newFields);
-        newFieldTracked.addAll(newFields.stream().map(nw::getField).collect(Collectors.toList()));
-        final HashSet<String> existingFields = new HashSet<>(newFieldNames);
-        existingFields.removeAll(newFields);
-        final Set<Field> fiels = existingFields.stream().map(n -> new HashMap.SimpleImmutableEntry<>(nw.getField(n), old.getField(n))).
-                peek(e -> e.getKey().setMatchedOldValue(e.getValue())).
-                map(AbstractMap.SimpleImmutableEntry::getKey).
-                collect(Collectors.toSet());
-        LOGGER.info("Existing fields in {} :\n\t{}", nw, fiels.stream().map(Object::toString).collect(Collectors.joining("\n\t")));
+    private <T> void differenceSet(final Supplier<Set<String>> old, final Supplier<Set<String>> nw,
+                                   final Function<String,T> oldLookup, final Function<String,T> newLookup,
+                                   final BiConsumer<T,T> connector,
+                                   final Supplier<List<T>> newTracker, final Supplier<List<T>> existingTracker, final Supplier<List<T>> missingTracker) {
+        SetDifference<String> sd = new SetDifference<>(old.get(), nw.get());
+        final HashSet<String> newValues = sd.getRightOnly();
+        final HashSet<String> missingValues = sd.getLeftOnly();
+        final HashSet<String> matchedValues = sd.getCommon();
+        final List<T> commonValues = matchedValues.stream().map(n -> new HashMap.SimpleImmutableEntry<>(oldLookup.apply(n), newLookup.apply(n))).
+                peek(e -> connector.accept(e.getKey(), e.getValue())).
+                map(AbstractMap.SimpleImmutableEntry::getValue).
+                collect(Collectors.toList());
+        missingTracker.get().addAll(missingValues.stream().map(oldLookup).collect(Collectors.toList()));
+        existingTracker.get().addAll(commonValues);
+        newTracker.get().addAll(newValues.stream().map(newLookup).collect(Collectors.toList()));
+    }
 
-        final Set<String> oldMethodSignatures = old.getMethodSignatures();
-        final Set<String> newMethodSignatures = nw.getMethodSignatures();
-        final HashSet<String> newMethods = new HashSet<>(newMethodSignatures);
-        newMethods.removeAll(oldMethodSignatures);
-        LOGGER.info("New methods in {} : {}", nw, newMethods);
-        newMethodTracked.addAll(newMethods.stream().map(nw::getMethod).collect(Collectors.toList()));
-        final HashSet<String> existingMethods = new HashSet<>(newMethodSignatures);
-        existingMethods.removeAll(newMethods);
-        // copy srg names from old to new for existing
-        final Set<Method> meths = existingMethods.stream().map(n -> new HashMap.SimpleImmutableEntry<>(nw.getMethod(n), old.getMethod(n))).
-                peek(e -> e.getKey().setMatchedOldValue(e.getValue())).
-                map(AbstractMap.SimpleImmutableEntry::getKey).
-                collect(Collectors.toSet());
-        LOGGER.info("Existing methods in {} :\n\t{}", nw, meths.stream().map(Object::toString).collect(Collectors.joining("\n\t")));
+    private void compareClass(final Class entry, final List<Field> newFieldTracked, final List<Method> newMethodTracked, final List<Field> missingFields, final List<Method> missingMethods) {
+        final Class old = entry.getMatchedOldValue();
+        final Class nw = entry;
+
+        differenceSet(old::getFieldNames, nw::getFieldNames, old::getField, nw::getField, (o,n)->n.setMatchedOldValue(o),()->newFieldTracked, ArrayList::new, ()->missingFields);
+        differenceSet(old::getMethodSignatures, nw::getMethodSignatures, old::getMethod, nw::getMethod, (o,n)->n.setMatchedOldValue(o),()->newMethodTracked, ArrayList::new, ()->missingMethods);
     }
 }
