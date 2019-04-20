@@ -3,6 +3,9 @@ package net.minecraftforge.depigifier.model;
 import net.minecraftforge.depigifier.ClassLookup;
 import net.minecraftforge.depigifier.ProguardFile;
 
+import java.util.Arrays;
+import java.util.stream.Collectors;
+
 public class Method {
     private final String proguardName;
     private final String obfName;
@@ -17,15 +20,15 @@ public class Method {
     public Method(final String proguardName, final String obfName, final String args, final String returnType, final int lineLow, final int lineHigh) {
         this.proguardName = proguardName;
         this.obfName = obfName;
-        this.args = args.split(",");
-        this.returnType = returnType;
+        this.args = Arrays.stream(args.split(",")).map(ClassLookup::transformSignature).toArray(String[]::new);
+        this.returnType = ClassLookup.transformSignature(returnType);
         this.lineLow = lineLow;
         this.lineHigh = lineHigh;
     }
 
     @Override
     public String toString() {
-        return getMethodSignature()+ " ("+this.lineLow +"->"+this.lineHigh+") -> " + this.srgName;
+        return getOwner().getProguardName() + " " + getMethodSignature()+ " ("+this.lineLow +"->"+this.lineHigh+") -> " + this.srgName;
     }
 
     public String getMethodSignature() {

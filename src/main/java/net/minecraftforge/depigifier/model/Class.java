@@ -1,5 +1,6 @@
 package net.minecraftforge.depigifier.model;
 
+import net.minecraftforge.depigifier.ClassLookup;
 import net.minecraftforge.depigifier.ProguardFile;
 
 import java.util.*;
@@ -15,8 +16,8 @@ public class Class {
     private Class matchedOldValue;
 
     public Class(final String proguardName, final String obfName) {
-        this.proguardName = proguardName;
-        this.obfName = obfName;
+        this.proguardName = ClassLookup.transformInternalName(proguardName);
+        this.obfName = ClassLookup.transformInternalName(obfName);
     }
 
     public String getProguardName() {

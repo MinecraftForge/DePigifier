@@ -13,8 +13,12 @@ public class ClassLookup {
     private static final String PRIMS = "VZCBSIFJD";
     public static String transformToSignature(final String input, final ProguardFile file) {
         return transformName(input, name -> {
-            final Class aClass = file.getClass(name);
-            return aClass == null ? name: aClass.getObfName();
+            if (name.endsWith(";")) {
+                int l = name.indexOf('L');
+                final Class aClass = file.getClass(name.substring(l+1, name.length()-1));
+                return aClass == null ? name: Strings.repeat('[', l)+"L"+aClass.getObfName()+";";
+            }
+            return name;
         });
     }
 
@@ -24,14 +28,20 @@ public class ClassLookup {
     }
 
     public static String transformMethodNoObf(final String[] args, final String ret) {
-        final String argstring = Arrays.stream(args).map(ClassLookup::transformNoObf).collect(Collectors.joining());
-        return "("+argstring+")"+transformNoObf(ret);
+        final String argstring = Arrays.stream(args).map(ClassLookup::transformSignature).collect(Collectors.joining());
+        return "("+argstring+")"+transformSignature(ret);
     }
 
     public static String transformNoObf(final String input) {
         return transformName(input, m->m);
     }
+
     public static String transformName(final String input, final Function<String,String> remapper) {
+        return remapper.apply(input);
+    }
+
+    public static String transformSignature(final String input) {
+        // transforms from . to / and int to I
         if (input.length()==0) return input;
         final int arr = input.split("\\[").length-1;
         final String array = Strings.repeat('[', arr);
@@ -40,8 +50,19 @@ public class ClassLookup {
         if (idx > -1) {
             return array + PRIMS.charAt(idx);
         } else {
-            final String obfName = remapper.apply(name);
-            return array + 'L'+ obfName.replace('.','/')+';';
+            return array + 'L' + transformInternalName(name) + ';';
+        }
+    }
+
+    public static String transformInternalName(final String input) {
+        return input.replace('.', '/');
+    }
+
+    public static String cleanInternalName(final String name) {
+        if (name.endsWith(";")) {
+            return name.substring(name.indexOf('L'), name.length()-1);
+        } else {
+            return name;
         }
     }
 }

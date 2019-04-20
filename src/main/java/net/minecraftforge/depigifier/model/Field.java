@@ -1,6 +1,7 @@
 package net.minecraftforge.depigifier.model;
 
 import jdk.nashorn.internal.objects.AccessorPropertyDescriptor;
+import net.minecraftforge.depigifier.ClassLookup;
 
 public class Field {
     private final String proguardName;
@@ -13,12 +14,12 @@ public class Field {
     public Field(final String proguardName, final String obfName, final String signature) {
         this.proguardName = proguardName;
         this.obfName = obfName;
-        this.signature = signature;
+        this.signature = ClassLookup.transformSignature(signature);
     }
 
     @Override
     public String toString() {
-        return "{"+signature+"} "+ owner.getProguardName()+"."+ proguardName;
+        return ""+signature+" "+ owner.getProguardName()+" "+ proguardName;
     }
 
     public String getProguardName() {

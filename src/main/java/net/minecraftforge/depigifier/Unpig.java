@@ -12,8 +12,10 @@ public class Unpig {
         final OptionParser optionParser = new OptionParser();
         final ArgumentAcceptingOptionSpec<Path> inSrgFile = optionParser.accepts("srg", "Old SRG file").
                 withRequiredArg().
-                withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
-                required();
+                withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE));
+        final ArgumentAcceptingOptionSpec<Path> tSrgMapFile = optionParser.accepts("mapping", "TSRG formatted mapping file").
+                withRequiredArg().
+                withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE));
         final ArgumentAcceptingOptionSpec<Path> oldPGFile = optionParser.accepts("oldPG", "Old ProGuard file").
                 withRequiredArg().
                 withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
@@ -47,10 +49,18 @@ public class Unpig {
         final Path newPG = argset.valueOf(newPGFile);
         final Path srgFile = argset.valueOf(inSrgFile);
         final Path output = argset.valueOf(outDir);
+        final Path tsrgMapper = argset.valueOf(tSrgMapFile);
         final ProguardFile oldProguard = new ProguardFile(oldPG);
         final ProguardFile newProguard = new ProguardFile(newPG);
-        final TSRGFile tsrgFile = new TSRGFile(srgFile, oldProguard);
+        if (argset.has(inSrgFile)) {
+            final TSRGFile tsrgFile = new TSRGFile(srgFile, oldProguard);
+        }
         Matcher comp = new Matcher(oldProguard, newProguard, output);
+
+        if (argset.has(tSrgMapFile)) {
+            final TSRGSubstitutions tsrgSubstitutions = new TSRGSubstitutions(tsrgMapper);
+            comp.addMapper(tsrgSubstitutions);
+        }
         comp.computeClassListDifferences();
         comp.compareExistingClasses();
     }
