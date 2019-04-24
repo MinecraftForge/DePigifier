@@ -13,7 +13,7 @@ import net.minecraftforge.depigifier.model.Class;
 import net.minecraftforge.depigifier.model.Method;
 
 public class MappingFile {
-    public static Tree load(final Path file) {
+    public static Tree load(final Path file, boolean filterInits) {
         final List<String> lines = Exceptions.sneak().get(() -> Files.readAllLines(file)).
             stream().map(l -> { //Trim comments and trailing whitespace
                 int idx = l.indexOf('#');
@@ -47,8 +47,11 @@ public class MappingFile {
                     tree.getClass(pts[1]).rename(pts[2]);
                 else if ("FD:".equals(pts[0]))
                     tree.getClass(getClass(pts[1])).getField(getName(pts[1])).rename(getName(pts[2]));
-                else if ("MD:".equals(pts[0]))
-                    tree.getClass(getClass(pts[1])).getMethod(getName(pts[1]), pts[2]).rename(getName(pts[3]));
+                else if ("MD:".equals(pts[0])) {
+                    String name = getName(pts[1]);
+                    if (!filterInits || !name.startsWith("<"))
+                        tree.getClass(getClass(pts[1])).getMethod(getName(pts[1]), pts[2]).rename(getName(pts[3]));
+                }
             }
         } else if (first.contains(" -> ")) {
             /* Proguard Format:
@@ -91,13 +94,16 @@ public class MappingFile {
 
                     int idx = pts[1].indexOf("(");
                     String name = pts[1].substring(0, idx);
-                    String desc = "(" + Arrays.stream(pts[1].substring(idx + 1, pts[1].length() - 1).split(","))
-                            .map(ClassLookup::transformSignature).collect(Collectors.joining())
-                            + ")" + ClassLookup.transformSignature(pts[0]);
-                    Method mtd = current.getMethod(name, desc);
-                    if (start != -1 && end != -1)
-                        mtd.setLines(start, end);
-                    mtd.rename(pts[3]);
+
+                    if (!filterInits || !name.startsWith("<")) {
+                        String desc = "(" + Arrays.stream(pts[1].substring(idx + 1, pts[1].length() - 1).split(","))
+                                .map(ClassLookup::transformSignature).collect(Collectors.joining())
+                                + ")" + ClassLookup.transformSignature(pts[0]);
+                        Method mtd = current.getMethod(name, desc);
+                        if (start != -1 && end != -1)
+                            mtd.setLines(start, end);
+                        mtd.rename(pts[3]);
+                    }
                 }
             }
         } else {
@@ -120,8 +126,10 @@ public class MappingFile {
                     String[] pts = line.substring(1).split(" ");
                     if (pts.length == 2)
                         current.getField(pts[0]).rename(pts[1]);
-                    else if (pts.length == 3)
-                        current.getMethod(pts[0], pts[1]).rename(pts[2]);
+                    else if (pts.length == 3) {
+                        if (!filterInits || !pts[0].startsWith("<"))
+                            current.getMethod(pts[0], pts[1]).rename(pts[2]);
+                    }
                 } else {
                     /* CSRG Format:
                      * old/package/ new/package/
@@ -132,15 +140,18 @@ public class MappingFile {
                      * Package lines must have BOTH parts ending in /, "/" is considered default package
                      * Descriptors on fields are not supported
                      */
-                    String[] pts = line.substring(1).split(" ");
+                    String[] pts = line.split(" ");
                     if (pts.length == 2 && pts[0].endsWith("/") && pts[1].endsWith("/"))
                         tree.addPackage(pts[0].substring(0, pts[0].length() - 1), pts[1].substring(0, pts[1].length() - 1));
                     else if (pts.length == 2)
                         current = tree.getClass(pts[0]).rename(pts[1]);
                     else if (pts.length == 3)
                         tree.getClass(pts[0]).getField(pts[1]).rename(pts[2]);
-                    else if (pts.length == 4)
-                        tree.getClass(pts[0]).getMethod(pts[1], pts[2]).rename(pts[3]);
+                    else if (pts.length == 4) {
+                        if (!filterInits || !pts[0].startsWith("<")) {
+                            tree.getClass(pts[0]).getMethod(pts[1], pts[2]).rename(pts[3]);
+                        }
+                    }
                 }
 
 

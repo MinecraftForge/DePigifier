@@ -42,7 +42,13 @@ public class Tree implements IMapper {
     @Override
     public String mapClass(String cls) {
         Class _cls = o2nClasses.get(cls);
-        return _cls == null ? cls : _cls.getNewName(); //TODO: Packages
+        if (_cls != null)
+            return _cls.getNewName();
+        int idx = cls.lastIndexOf('$');
+        if (idx > 0)
+            return mapClass(cls.substring(0, idx)) + cls.substring(idx);
+
+        return cls; //TODO: Packages
     }
 
     @Override

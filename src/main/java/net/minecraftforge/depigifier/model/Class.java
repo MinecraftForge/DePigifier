@@ -82,7 +82,7 @@ public class Class {
     }
 
     public String mapMethod(String method, String desc) {
-        Method mtd = o2nMethods.get(method);
+        Method mtd = o2nMethods.get(method + desc);
         return mtd == null ? method : mtd.getNewName();
     }
 
