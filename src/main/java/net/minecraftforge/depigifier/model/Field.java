@@ -1,53 +1,46 @@
 package net.minecraftforge.depigifier.model;
 
-import jdk.nashorn.internal.objects.AccessorPropertyDescriptor;
-import net.minecraftforge.depigifier.ClassLookup;
-
 public class Field {
-    private final String proguardName;
-    private final String obfName;
-    private final String signature;
-    private String srgName;
-    private Field matchedOldValue;
-    private Class owner;
+    private final Class owner;
+    private final String oldName;
+    private String newName;
+    private String desc;
 
-    public Field(final String proguardName, final String obfName, final String signature) {
-        this.proguardName = proguardName;
-        this.obfName = obfName;
-        this.signature = ClassLookup.transformSignature(signature);
+    public Field(final Class owner, final String name) {
+        this.owner = owner;
+        this.oldName = name;
+        this.newName = name;
+    }
+
+    public Field setType(String desc) {
+        this.desc = desc;
+        return this;
+    }
+
+    public Field rename(String newName) {
+        this.owner.renameField(this, newName);
+        this.newName = newName;
+        return this;
     }
 
     @Override
     public String toString() {
-        return ""+signature+" "+ owner.getProguardName()+" "+ proguardName;
+        return "(" + (this.desc == null ? "unknown" : this.desc) + ") " + owner.getOldName() + "." + oldName;
     }
 
-    public String getProguardName() {
-        return proguardName;
+    public String getOldName() {
+        return oldName;
     }
 
-    public Field getMatchedOldValue() {
-        return matchedOldValue;
+    public String getNewName() {
+        return newName;
     }
 
-    public void setMatchedOldValue(final Field matchedOldValue) {
-        this.matchedOldValue = matchedOldValue;
-        this.srgName = matchedOldValue.getSrgName();
-    }
-
-    public String getSrgName() {
-        return srgName;
-    }
-
-    public void setOwner(final Class owner) {
-        this.owner = owner;
+    public String getType() {
+        return desc;
     }
 
     public Class getOwner() {
         return owner;
-    }
-
-    public String getObfName() {
-        return obfName;
     }
 }

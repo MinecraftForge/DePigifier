@@ -1,82 +1,82 @@
 package net.minecraftforge.depigifier.model;
 
-import net.minecraftforge.depigifier.ClassLookup;
-import net.minecraftforge.depigifier.ProguardFile;
+import org.objectweb.asm.Type;
 
-import java.util.Arrays;
-import java.util.stream.Collectors;
+import net.minecraftforge.depigifier.IMapper;
 
 public class Method {
-    private final String proguardName;
-    private final String obfName;
-    private final String[] args;
-    private final String returnType;
-    private final int lineLow;
-    private final int lineHigh;
-    private String srgName;
-    private Method matchedOldValue;
-    private Class owner;
+    private final Class owner;
+    private final String oldName;
+    private final String desc;
+    private final Type[] args;
+    private final Type retType;
 
-    public Method(final String proguardName, final String obfName, final String args, final String returnType, final int lineLow, final int lineHigh) {
-        this.proguardName = proguardName;
-        this.obfName = obfName;
-        this.args = Arrays.stream(args.split(",")).map(ClassLookup::transformSignature).toArray(String[]::new);
-        this.returnType = ClassLookup.transformSignature(returnType);
-        this.lineLow = lineLow;
-        this.lineHigh = lineHigh;
+    private String newName;
+    private int start = -1;
+    private int end = -1;
+
+    public Method(final Class owner, final String name, final String desc) {
+        this.owner = owner;
+        this.oldName = name;
+        this.newName = name;
+        this.desc = desc;
+        this.args = Type.getArgumentTypes(desc);
+        this.retType = Type.getReturnType(desc);
+
+        for (Type arg : args) {
+            if (arg.getSort() == Type.ARRAY)
+                arg = arg.getElementType();
+            if (arg.getSort() == Type.OBJECT)
+                getOwner().addReference(arg.getInternalName(), this);
+        }
+    }
+
+    public Method setLines(int start, int end) {
+        this.start = start;
+        this.end = end;
+        return this;
+    }
+
+    public Method rename(String newName) {
+        getOwner().renameMethod(this, newName);
+        this.newName = newName;
+        return this;
     }
 
     @Override
     public String toString() {
-        return getOwner().getProguardName() + " " + getMethodSignature()+ " ("+this.lineLow +"->"+this.lineHigh+") -> " + this.srgName;
+        return (hasLines() ? "(" + getStart() + ":" + getEnd() + ") " : "") + getOwner().getOldName() + "." + getOldName() + getOldDesc();
     }
 
-    public String getMethodSignature() {
-        return proguardName + "("+String.join(",",this.args)+")"+this.returnType;
+    public String getOldDesc() {
+        return desc;
     }
 
-    public String getObfSignature(final ProguardFile proguardFile) {
-        return obfName+ClassLookup.transformSig(args, returnType, proguardFile);
-    }
-
-    public void setSrgName(final String srgName) {
-        this.srgName = srgName;
-    }
-
-    public String getSrgName() {
-        return srgName;
-    }
-
-    public Method getMatchedOldValue() {
-        return matchedOldValue;
-    }
-
-    public void setMatchedOldValue(final Method matchedOldValue) {
-        this.matchedOldValue = matchedOldValue;
-        this.srgName = matchedOldValue.getSrgName();
+    public String getNewDesc(IMapper mapper) {
+        return mapper.mapDescriptor(args, retType);
     }
 
     public Class getOwner() {
         return owner;
     }
 
-    public void setOwner(final Class owner) {
-        this.owner = owner;
+    public String getOldName() {
+        return oldName;
     }
 
-    public String getProguardName() {
-        return proguardName;
+    public String getNewName() {
+        return newName;
     }
 
-    public String getTSRGName() {
-        return proguardName+" "+ClassLookup.transformMethodNoObf(args, returnType);
+    public boolean hasLines() {
+        return start != -1 && end != -1;
     }
 
-    public String getObfName() {
-        return obfName;
+    public int getStart() {
+        return start;
     }
 
-    public String getTSRGObfName(final ProguardFile pgFile) {
-        return obfName+" "+ClassLookup.transformSig(args, returnType, pgFile);
+    public int getEnd() {
+        return end;
     }
 }

@@ -1,96 +1,115 @@
 package net.minecraftforge.depigifier.model;
 
-import net.minecraftforge.depigifier.ClassLookup;
-import net.minecraftforge.depigifier.ProguardFile;
-
 import java.util.*;
 
+import net.minecraftforge.depigifier.IMapper;
+
 public class Class {
-    private final String proguardName;
-    private final String obfName;
-    private String srgName;
-    private final Map<String,Field> fields = new HashMap<>();
-    private final Map<String,Field> obfFields = new HashMap<>();
-    private final Map<String,Method> methods = new HashMap<>();
-    private final Map<String,Method> obfMethods = new HashMap<>();
-    private Class matchedOldValue;
+    private final Map<String, Field> o2nFields = new HashMap<>();
+    private final Map<String, Field> n2oFields = new HashMap<>();
+    private final Map<String, Method> o2nMethods = new HashMap<>();
+    private final Map<String, Method> n2oMethods = new HashMap<>();
+    private final Map<String, Set<Method>> references = new HashMap<>();
 
-    public Class(final String proguardName, final String obfName) {
-        this.proguardName = ClassLookup.transformInternalName(proguardName);
-        this.obfName = ClassLookup.transformInternalName(obfName);
-    }
+    private final Tree tree;
+    private final String oldName;
+    private String newName;
 
-    public String getProguardName() {
-        return proguardName;
-    }
-
-    public String getObfName() {
-        return obfName;
+    Class(final Tree tree, final String name) {
+        this.tree = tree;
+        this.oldName = name;
+        this.newName = name;
     }
 
     @Override
     public String toString() {
-        return proguardName +"->"+obfName+"->"+srgName;
+        return "CL: " + oldName + " " + newName;
     }
 
-    public Method addMethod(final Method method, final ProguardFile proguardFile) {
-        methods.put(method.getMethodSignature(), method);
-        method.setOwner(this);
-        return method;
+    public Class rename(String newName) {
+        this.tree.renameClass(this, newName);
+        this.newName = newName;
+        return this;
     }
 
-    public Field addField(final Field field, final ProguardFile proguardFile) {
-        fields.put(field.getProguardName(), field);
-        field.setOwner(this);
-        return field;
+    public String getOldName() {
+        return oldName;
     }
 
-    public Set<String> getFieldNames() {
-        return fields.keySet();
+    public String getNewName() {
+        return newName;
     }
 
-    public Set<String> getMethodSignatures() {
-        return methods.keySet();
+    public Field getField(String name) {
+        return o2nFields.computeIfAbsent(name, k -> new Field(this, name));
     }
 
-    public void setSrgName(final String srgName) {
-        this.srgName = srgName;
+    public Field tryField(String name) {
+        return o2nFields.get(name);
     }
 
-    public String getSrgName() {
-        return srgName;
-    }
-
-    public Method findObfMethod(final String obfName, final String obfSignature) {
-        return obfMethods.get(obfName+obfSignature);
-    }
-
-    public Method getMethod(final String signature) {
-        return methods.get(signature);
-    }
-
-    public void buildObfLookups(final ProguardFile proguardFile) {
-        methods.values().forEach(m->obfMethods.put(m.getObfSignature(proguardFile), m));
-    }
-
-    public Class getMatchedOldValue() {
-        return matchedOldValue;
-    }
-
-    public void setMatchedOldValue(final Class matchedOldValue) {
-        this.matchedOldValue = matchedOldValue;
-        this.srgName = matchedOldValue.getSrgName();
-    }
-
-    public Field getField(final String name) {
-        return this.fields.get(name);
-    }
-
+    //Warning: Data is not copied, Do not modify.
     public Collection<Field> getFields() {
-        return fields.values();
+        return o2nFields.values();
     }
 
+    //Warning: Data is not copied, Do not modify.
+    public Set<String> getFieldNames() {
+        return o2nFields.keySet();
+    }
+
+    public Method getMethod(String name, String desc) {
+        return o2nMethods.computeIfAbsent(name + desc, k -> new Method(this, name, desc));
+    }
+
+    public Method tryMethod(String name, String desc) {
+        return o2nMethods.get(name + desc);
+    }
+
+    //Warning: Data is not copied, Do not modify.
     public Collection<Method> getMethods() {
-        return methods.values();
+        return o2nMethods.values();
+    }
+
+    //Warning: Data is not copied, Do not modify.
+    public Set<String> getMethodSignatures() {
+        return o2nMethods.keySet();
+    }
+
+    public String mapField(String field) {
+        Field fld = o2nFields.get(field);
+        return fld == null ? field : fld.getNewName();
+    }
+
+    public String mapMethod(String method, String desc) {
+        Method mtd = o2nMethods.get(method);
+        return mtd == null ? method : mtd.getNewName();
+    }
+
+    //Package Private things are notifications from other methods, use those instead.
+
+    void renameField(Field field, String newName) {
+        //TODO: Add check to not overwrite existing?
+        n2oFields.remove(field.getNewName());
+        n2oFields.put(newName, field);
+    }
+
+    void renameMethod(Method method, String newName) {
+        //TODO: Add check to not overwrite existing?
+        String desc = method.getNewDesc(tree);
+        n2oMethods.remove(method.getNewName() + desc);
+        n2oMethods.put(newName + desc, method);
+    }
+
+    void addReference(String cls, Method method) {
+        references.computeIfAbsent(cls, k -> new HashSet<>()).add(method);
+        tree.addReference(cls, this);
+    }
+
+    void classRenamed(Class cls, IMapper mapper) {
+        references.getOrDefault(cls.getOldName(), Collections.emptySet()).forEach(m -> {
+            n2oMethods.remove(m.getNewName() + m.getNewDesc(tree));
+            n2oMethods.put(m.getNewName() + m.getNewDesc(mapper), m);
+        });
     }
 }

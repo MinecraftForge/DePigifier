@@ -5,3 +5,9 @@
 /outexample.txt
 /output/
 /.idea/
+/.gradle/
+/.classpath
+/.project
+/.settings/
+/bin/
+/build/
