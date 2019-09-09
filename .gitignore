@@ -1,13 +1,24 @@
-# Created by .ignore support plugin (hsz.mobi)
-/1102.tsrg
-/example.txt
-/input.txt
-/outexample.txt
-/output/
-/.idea/
-/.gradle/
+#eclipse
+/bin
+/.settings
 /.classpath
-/.project
-/.settings/
-/bin/
-/build/
+
+#In case people make their workspace in the repo
+/eclipse/
+.project
+.classpath
+
+#idea
+/.idea
+/classes
+*.iml
+
+#gradle
+/build
+/.gradle
+
+#occupational hazards
+/projects/
+/repo/
+/buildSrc/
+/output/
