@@ -39,7 +39,7 @@ public class MappingFile {
                 if (idx == -1) return l;
                 while (idx > 0 && Character.isWhitespace(l.charAt(idx)))
                     idx--;
-                return l.substring(0, idx - 1);
+                return idx > 0 ? l.substring(0, idx - 1) : "";
             })
             .filter(l -> !l.isEmpty())
             .collect(Collectors.toList());
