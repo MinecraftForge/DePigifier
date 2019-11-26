@@ -24,6 +24,7 @@ import joptsimple.*;
 import joptsimple.util.PathConverter;
 import joptsimple.util.PathProperties;
 import net.minecraftforge.depigifier.model.Tree;
+import net.minecraftforge.srgutils.IMappingFile;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,7 +32,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class Unpig {
-    public static void main(String... args) {
+    public static void main(String... args) throws IOException {
         final OptionParser optionParser = new OptionParser();
         /*TODO: I don't really care about old SRG -> new right now.
          * I already have scripts to convert this using a old->new map
@@ -79,8 +80,8 @@ public class Unpig {
         final Path output = argset.valueOf(outDir);
         final Path manualMap = argset.valueOf(manualMapFile);
 
-        final Tree oldTree = MappingFile.load(oldPG, true);
-        final Tree newTree = MappingFile.load(newPG, true);
+        final Tree oldTree = Tree.from(IMappingFile.load(oldPG.toFile()), true);
+        final Tree newTree = Tree.from(IMappingFile.load(newPG.toFile()), true);
         /*
         if (argset.has(inSrgFile)) {
             final TSRGFile tsrgFile = new TSRGFile(srgFile, oldProguard);
@@ -100,7 +101,7 @@ public class Unpig {
         Matcher comp = new Matcher(oldTree, newTree, output);
 
         if (argset.has(manualMapFile)) {
-            final Tree manualMappings = MappingFile.load(manualMap, false);
+            final Tree manualMappings = Tree.from(IMappingFile.load(manualMap.toFile()), false);
             comp.addMapper(manualMappings);
         }
         comp.computeClassListDifferences();

@@ -26,10 +26,24 @@ import java.util.HashSet;
 import java.util.Set;
 
 import net.minecraftforge.depigifier.IMapper;
+import net.minecraftforge.srgutils.IMappingFile;
 
 import java.util.Map;
 
 public class Tree implements IMapper {
+    public static Tree from(IMappingFile map, final boolean filterInits) {
+        Tree ret = new Tree();
+        map.getPackages().forEach(pkg -> ret.addPackage(pkg.getOriginal(), pkg.getMapped()));
+        map.getClasses().forEach(cls -> {
+            Class tcls = ret.getClass(cls.getOriginal());
+            tcls.rename(cls.getMapped());
+            cls.getFields().forEach(fld -> tcls.getField(fld.getOriginal()).rename(fld.getMapped()));
+            cls.getMethods().stream().filter(mtd -> !filterInits || !mtd.getOriginal().startsWith("<"))
+                .forEach(mtd -> tcls.getMethod(mtd.getOriginal(), mtd.getDescriptor()).rename(mtd.getMapped()));
+        });
+        return ret;
+    }
+
     // Package map, an empty string is considered the 'default' package
     private Map<String, String> packages = new HashMap<>();
     private Map<String, Class> o2nClasses = new HashMap<>();
