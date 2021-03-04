@@ -83,7 +83,7 @@ public class Matcher {
         System.out.println("Classes: " + missingClasses.size() + "/" + newClasses.size() + "/" + newTree.getClasses().size());
     }
 
-    public void compareExistingClasses() {
+    public void compareExistingClasses(boolean skipSuggestions) {
         existingClasses.forEach(aClass -> compareClass(aClass, newFields, newMethods, missingFields, missingMethods));
         writeFile(outputDir.resolve("newfields.txt"), listBuilder(()->newFields, Matcher::fieldToTSRGString));
         writeFile(outputDir.resolve("missingfields.txt"), listBuilder(()->missingFields, Matcher::fieldToTSRGString));
@@ -101,18 +101,20 @@ public class Matcher {
 
         dumpMagiDots();
 
-        missingClasses.stream().sorted((c1,c2) -> c1.getOldName().compareTo(c2.getOldName())).forEach(m -> {
-            String name = m.getOldName().substring(m.getOldName().lastIndexOf('/')+1);
-            if (!name.equals("package-info")) {
-                List<String> lst = newClasses.stream().map(Class::getOldName).filter(n -> n.endsWith(name)).collect(Collectors.toList());
-                if (lst.size() == 1)
-                    System.out.println(m.getOldName() + " " + lst.get(0));
-                else if (!lst.isEmpty()) {
-                    System.out.println(m.getOldName());
-                    lst.forEach(l -> System.out.println("  " + l));
+        if (!skipSuggestions) {
+            missingClasses.stream().sorted((c1,c2) -> c1.getOldName().compareTo(c2.getOldName())).forEach(m -> {
+                String name = m.getOldName().substring(m.getOldName().lastIndexOf('/')+1);
+                if (!name.equals("package-info")) {
+                    List<String> lst = newClasses.stream().map(Class::getOldName).filter(n -> n.endsWith(name)).collect(Collectors.toList());
+                    if (lst.size() == 1)
+                        System.out.println(m.getOldName() + " " + lst.get(0));
+                    else if (!lst.isEmpty()) {
+                        System.out.println(m.getOldName());
+                        lst.forEach(l -> System.out.println("  " + l));
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 
     private void dumpMagiDots() {

@@ -57,6 +57,7 @@ public class Unpig {
                 withRequiredArg().
                 withValuesConvertedBy(new PathConverter()).
                 defaultsTo(Paths.get("output"));
+        final AbstractOptionSpec<Void> skipSuggestionsOption = optionParser.accepts("skipSuggestions", "Skip printing suggestions for renames");
 
         final AbstractOptionSpec<Void> forHelp = optionParser.accepts("help", "Help").forHelp();
 
@@ -79,6 +80,7 @@ public class Unpig {
         //final Path srgFile = argset.valueOf(inSrgFile);
         final Path output = argset.valueOf(outDir);
         final Path manualMap = argset.valueOf(manualMapFile);
+        final boolean skipSuggestions = argset.has(skipSuggestionsOption);
 
         final Tree oldTree = Tree.from(IMappingFile.load(oldPG.toFile()), true);
         final Tree newTree = Tree.from(IMappingFile.load(newPG.toFile()), true);
@@ -105,6 +107,6 @@ public class Unpig {
             comp.addMapper(manualMappings);
         }
         comp.computeClassListDifferences();
-        comp.compareExistingClasses();
+        comp.compareExistingClasses(skipSuggestions);
     }
 }
