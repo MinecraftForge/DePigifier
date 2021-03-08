@@ -25,9 +25,16 @@ import net.minecraftforge.depigifier.model.Field;
 import net.minecraftforge.depigifier.model.Method;
 import net.minecraftforge.depigifier.model.Tree;
 
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.MethodNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -38,6 +45,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 public class Matcher {
 
@@ -83,8 +92,8 @@ public class Matcher {
         System.out.println("Classes: " + missingClasses.size() + "/" + newClasses.size() + "/" + newTree.getClasses().size());
     }
 
-    public void compareExistingClasses() {
-        existingClasses.forEach(aClass -> compareClass(aClass, newFields, newMethods, missingFields, missingMethods));
+    public void compareExistingClasses(Path oldJar, Path newJar) {
+        existingClasses.forEach(aClass -> compareClass(aClass, newFields, newMethods, missingFields, missingMethods, oldJar, newJar));
         writeFile(outputDir.resolve("newfields.txt"), listBuilder(()->newFields, Matcher::fieldToTSRGString));
         writeFile(outputDir.resolve("missingfields.txt"), listBuilder(()->missingFields, Matcher::fieldToTSRGString));
         writeFile(outputDir.resolve("newmethods.txt"), listBuilder(()->newMethods, Matcher::methodToTSRGString));
@@ -169,17 +178,141 @@ public class Matcher {
         newTracker.get().addAll(newValues.stream().map(newLookup).collect(Collectors.toList()));
     }
 
-    private void compareClass(final Class entry, final List<Field> newFieldTracked, final List<Method> newMethodTracked, final List<Field> missingFields, final List<Method> missingMethods) {
+    private void compareClass(final Class entry, final List<Field> newFieldTracked, final List<Method> newMethodTracked, final List<Field> missingFields, final List<Method> missingMethods, Path oldJar, Path newJar) {
         final Class old = forcedClasses.get(entry);
         final Class nw = entry;
         BiFunction<Class, String, Method> tryMethod = (cls, sig) -> {
             int idx = sig.indexOf('(');
             return cls.tryMethod(sig.substring(0, idx), sig.substring(idx));
         };
+        
+        Function<String, String> mtdMapper = (sig -> mapMethod(old.getOldName(), sig));
+
+        Map<String, String> lambdaMappings = new HashMap<>();
+        List<Method> lambdasOld = getLambdas(old);
+        List<Method> lambdasNew = getLambdas(nw);
+        if(lambdasOld.size() > 1 && lambdasNew.size() > 1) {
+            List<Method> commonForNew = new ArrayList<>();
+            List<Method> commonForOld = lambdasOld.stream()
+                    .filter(oltMtd ->
+                            lambdasNew.stream()
+                                    .anyMatch(newMtd -> {
+                                        boolean match = oltMtd.getOldName().equals(newMtd.getOldName()) && oltMtd.getNewDesc(newTree).equals(newMtd.getNewDesc(newTree));
+                                        if(match && !commonForNew.contains(newMtd))
+                                            commonForNew.add(newMtd);
+                                        return match;
+                                    }))
+                    .collect(Collectors.toList());
+            lambdasOld.removeAll(commonForOld);
+            lambdasNew.removeAll(commonForNew);
+
+            int lambdaCounter = computeLambdas(lambdasOld, lambdasNew, lambdaMappings, oldJar, newJar);
+
+            mtdMapper = oldSig -> {
+                String mappedSig = mapMethod(old.getOldName(), oldSig);
+                if(!mappedSig.equals(oldSig))
+                    return mappedSig;
+                return lambdaMappings.getOrDefault(oldSig, oldSig);
+            };
+        }
 
         differenceSet(old::getFieldNames, nw::getFieldNames, fld -> mapField(old.getOldName(), fld), old::tryField, nw::tryField, forcedFields::put,()->newFieldTracked, ArrayList::new, ()->missingFields);
-        differenceSet(old::getMethodSignatures, nw::getMethodSignatures, s -> mapMethod(old.getOldName(), s), sig -> tryMethod.apply(old, sig), sig -> tryMethod.apply(nw, sig), forcedMethods::put,()->newMethodTracked, ArrayList::new, ()->missingMethods);
+        differenceSet(old::getMethodSignatures, nw::getMethodSignatures, mtdMapper, sig -> tryMethod.apply(old, sig), sig -> tryMethod.apply(nw, sig), forcedMethods::put,()->newMethodTracked, ArrayList::new, ()->missingMethods);
+
     }
+    
+    private int computeLambdas(List<Method> oldLambdas, List<Method> newLambdas, Map<String, String> matcher, Path oldJar, Path newJar) {
+        if(oldLambdas.isEmpty() || newLambdas.isEmpty()) {
+        	return 0;
+        }
+    	
+    	int counter = 0;
+        List<InsnList> oldLambdasInsn = getInstructions(oldJar, oldLambdas, oldTree);
+        List<InsnList> newLambdasInsn = getInstructions(newJar, newLambdas, newTree);
+        
+        for(int i = 0; i < oldLambdas.size(); i++) {
+        	if(oldLambdasInsn.get(i) == null) {
+        		continue;
+        	}
+        	
+        	String desc = oldLambdas.get(i).getNewDesc(newTree);
+        	Type retType = Type.getReturnType(desc);
+        	
+        	List<Map.Entry<Integer, Double>> matches = new ArrayList<>();
+        	for(int j = 0; j < newLambdas.size(); j++) {
+        		if(newLambdasInsn.get(j) == null) {
+        			continue;
+        		}
+        		
+        		String newDesc = newLambdas.get(j).getNewDesc(newTree);
+        		if(!Type.getReturnType(newDesc).equals(retType)) {
+        			continue; //different return type
+        		}
+        		
+        		double distance = EditDistance.computeDistance(oldLambdasInsn.get(i), newLambdasInsn.get(j), oldTree, newTree);
+        		matches.add(new HashMap.SimpleImmutableEntry<>(j, distance));
+        	}
+        	
+        	if(!matches.isEmpty()) {
+        		matches.sort(Comparator.comparingDouble(Map.Entry::getValue));
+        		
+        		if(matches.get(0).getValue() <= 0.15D && (matches.size() == 1 || matches.get(1).getValue() > 0.2D)) {            		
+            		Method matchingLambda = newLambdas.get(matches.get(0).getKey());
+            		
+            		String newSig = matchingLambda.getOldName() + matchingLambda.getOldDesc();
+            		if(matcher.containsValue(newSig))
+                        continue;
+                    matcher.put(oldLambdas.get(i).getOldName() + oldLambdas.get(i).getOldDesc(), newSig);
+                    counter += 1;
+        		}
+        	}
+        	
+        }
+        
+        return counter;
+    }
+
+    
+    private List<Method> getLambdas(Class clazz) {
+        return clazz.getMethods()
+                .stream()
+                .filter(mtd -> mtd.getOldName().contains("lambda$"))
+                .collect(Collectors.toList());
+    }
+    
+    private List<InsnList> getInstructions(Path jar, List<Method> lambdas, IMapper mapper) {
+    	List<InsnList> ret = new ArrayList<>();
+    	try(ZipFile zf = new ZipFile(jar.toFile())) {
+    		for(Method mtd : lambdas) {
+        		ZipEntry entry = zf.getEntry(mtd.getOwner().getNewName() + ".class");
+        		if(entry == null) {
+        			throw new IllegalStateException("Could not find class in jar");
+        		}
+        		ClassReader cr = new ClassReader(zf.getInputStream(entry));
+        		ClassNode cn = new ClassNode();
+        		cr.accept(cn, ClassReader.SKIP_DEBUG);
+        		List<MethodNode> methods = cn.methods
+        			.stream()
+        			.filter(node -> {
+        				return node.name.equals(mtd.getNewName()) && node.desc.equals(mtd.getNewDesc(mapper));
+        			})
+        			.collect(Collectors.toList());
+        		
+        		if(methods.size() > 1) {
+        			throw new IllegalStateException("Could not find lambda instructions");	
+        		}else if(methods.isEmpty()) {
+        			//method striped?, mostly gametest stuff
+        			ret.add(null);
+        		}else {
+        			ret.add(methods.get(0).instructions);	
+        		}
+    		}
+    	}catch(IOException e) {
+    		throw new UncheckedIOException(e);
+    	}
+    	return ret;
+    }
+
 
     public void addMapper(final IMapper mapper) {
         mappers.add(mapper);

@@ -49,8 +49,16 @@ public class Unpig {
                 withRequiredArg().
                 withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
                 required();
+        final ArgumentAcceptingOptionSpec<Path> oldJarFile = optionParser.accepts("oldJar", "Old jar file").
+        		withRequiredArg().
+                withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
+                required();
         final ArgumentAcceptingOptionSpec<Path> newPGFile = optionParser.accepts("newPG", "New ProGuard file").
                 withRequiredArg().
+                withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
+                required();
+        final ArgumentAcceptingOptionSpec<Path> newJarFile = optionParser.accepts("newJar", "New jar file").
+        		withRequiredArg().
                 withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
                 required();
         final ArgumentAcceptingOptionSpec<Path> outDir = optionParser.accepts("out", "Directory to output to").
@@ -76,6 +84,9 @@ public class Unpig {
 
         final Path oldPG = argset.valueOf(oldPGFile);
         final Path newPG = argset.valueOf(newPGFile);
+        
+        final Path oldJar = argset.valueOf(oldJarFile);
+        final Path newJar = argset.valueOf(newJarFile);
         //final Path srgFile = argset.valueOf(inSrgFile);
         final Path output = argset.valueOf(outDir);
         final Path manualMap = argset.valueOf(manualMapFile);
@@ -105,6 +116,6 @@ public class Unpig {
             comp.addMapper(manualMappings);
         }
         comp.computeClassListDifferences();
-        comp.compareExistingClasses();
+        comp.compareExistingClasses(oldJar, newJar);
     }
 }
