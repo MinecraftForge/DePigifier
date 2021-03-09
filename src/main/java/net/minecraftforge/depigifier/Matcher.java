@@ -286,7 +286,9 @@ public class Matcher {
     		for(Method mtd : lambdas) {
         		ZipEntry entry = zf.getEntry(mtd.getOwner().getNewName() + ".class");
         		if(entry == null) {
-        			throw new IllegalStateException("Could not find class in jar");
+        			//class stripped?
+        			ret.add(null);
+        			continue;
         		}
         		ClassReader cr = new ClassReader(zf.getInputStream(entry));
         		ClassNode cn = new ClassNode();
@@ -301,7 +303,7 @@ public class Matcher {
         		if(methods.size() > 1) {
         			throw new IllegalStateException("Could not find lambda instructions");	
         		}else if(methods.isEmpty()) {
-        			//method striped?, mostly gametest stuff
+        			//method stripped?, mostly gametest stuff
         			ret.add(null);
         		}else {
         			ret.add(methods.get(0).instructions);	
