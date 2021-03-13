@@ -66,14 +66,54 @@ public class EditDistance {
 			FieldInsnNode fieldA = (FieldInsnNode)a;
 			FieldInsnNode fieldB = (FieldInsnNode)b;
 			
-			return Type.getType(fieldA.desc).getSort() == Type.getType(fieldB.desc).getSort();
+			String fieldTypeA = mapperA.mapClass(Type.getType(fieldA.desc).getClassName());
+			String fieldTypeB = mapperB.mapClass(Type.getType(fieldB.desc).getClassName());
+			if(!fieldTypeA.equals(fieldTypeB)) {
+				return false;
+			}
+			
+			String fieldOwnerA = mapperA.mapClass(fieldA.owner);
+			String fieldOwnerB = mapperB.mapClass(fieldB.owner);
+			if(!fieldOwnerA.equals(fieldOwnerB)) {
+				return false;
+			}
+			
+			String fieldNameA = mapperA.mapField(fieldA.owner, fieldA.name);
+			String fieldNameB = mapperB.mapField(fieldB.owner, fieldB.name);
+			if(!fieldNameA.equals(fieldNameB)) {
+				return false;
+			}
+			
+			return true;
 		}
 		
 		if(a instanceof MethodInsnNode && b instanceof MethodInsnNode) {
 			MethodInsnNode methodA = (MethodInsnNode)a;
 			MethodInsnNode methodB = (MethodInsnNode)b;
 			
-			return Type.getReturnType(methodA.desc).getSort() == Type.getReturnType(methodB.desc).getSort();
+			if(methodA.itf != methodB.itf) {
+				return false;
+			}
+			
+			String methodOwnerA = mapperA.mapClass(methodA.owner);
+			String methodOwnerB = mapperB.mapClass(methodB.owner);
+			if(!methodOwnerA.equals(methodOwnerB)) {
+				return false;
+			}
+			
+			String methodDescA = mapperA.mapDescriptor(methodA.desc);
+			String methodDescB = mapperB.mapDescriptor(methodB.desc);
+			if(!methodDescA.equals(methodDescB)) {
+				return false;
+			}
+			
+			String methodNameA = mapperA.mapMethod(methodA.owner, methodA.name, methodA.desc);
+			String methodNameB = mapperB.mapMethod(methodB.owner, methodB.name, methodB.desc);
+			if(!methodNameA.equals(methodNameB)) {
+				return false;
+			}
+			
+			return true;
 		}
 		
 		if(a instanceof VarInsnNode && b instanceof VarInsnNode) {

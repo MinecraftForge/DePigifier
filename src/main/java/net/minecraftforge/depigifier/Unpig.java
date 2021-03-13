@@ -92,7 +92,9 @@ public class Unpig {
         final Path manualMap = argset.valueOf(manualMapFile);
 
         final Tree oldTree = Tree.from(IMappingFile.load(oldPG.toFile()), true);
+        final Tree oldTreeReversed = Tree.from(IMappingFile.load(oldPG.toFile()).reverse(), true);
         final Tree newTree = Tree.from(IMappingFile.load(newPG.toFile()), true);
+        final Tree newTreeReversed = Tree.from(IMappingFile.load(newPG.toFile()).reverse(), true);
         /*
         if (argset.has(inSrgFile)) {
             final TSRGFile tsrgFile = new TSRGFile(srgFile, oldProguard);
@@ -109,7 +111,7 @@ public class Unpig {
             }
         }
 
-        Matcher comp = new Matcher(oldTree, newTree, output);
+        Matcher comp = new Matcher(oldTree, oldTreeReversed, newTree, newTreeReversed, output);
 
         if (argset.has(manualMapFile)) {
             final Tree manualMappings = Tree.from(IMappingFile.load(manualMap.toFile()), false);

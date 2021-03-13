@@ -27,8 +27,10 @@ import net.minecraftforge.depigifier.model.Tree;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +47,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -52,7 +55,9 @@ public class Matcher {
 
     public static final Logger LOGGER = LoggerFactory.getLogger(Matcher.class);
     private final Tree oldTree;
+    private final Tree oldTreeReversed;
     private final Tree newTree;
+    private final Tree newTreeReversed;
     private final Path outputDir;
     private final List<IMapper> mappers = new ArrayList<>();
     private List<Class> existingClasses;
@@ -69,9 +74,11 @@ public class Matcher {
     private List<Field> missingFields = new ArrayList<>();
     private List<Method> missingMethods = new ArrayList<>();
 
-    public Matcher(final Tree oldTree, final Tree newTree, final Path output) {
+    public Matcher(final Tree oldTree, final Tree oldTreeReversed, final Tree newTree, final Tree newTreeReversed, final Path output) {
         this.oldTree = oldTree;
+        this.oldTreeReversed = oldTreeReversed;
         this.newTree = newTree;
+        this.newTreeReversed = newTreeReversed;
         this.outputDir = output;
     }
 
@@ -249,7 +256,7 @@ public class Matcher {
         			continue; //different return type
         		}
         		
-        		double distance = EditDistance.computeDistance(oldLambdasInsn.get(i), newLambdasInsn.get(j), oldTree, newTree);
+        		double distance = EditDistance.computeDistance(oldLambdasInsn.get(i), newLambdasInsn.get(j), oldTreeReversed, newTreeReversed);
         		matches.add(new HashMap.SimpleImmutableEntry<>(j, distance));
         	}
         	
@@ -292,7 +299,7 @@ public class Matcher {
         		}
         		ClassReader cr = new ClassReader(zf.getInputStream(entry));
         		ClassNode cn = new ClassNode();
-        		cr.accept(cn, ClassReader.SKIP_DEBUG);
+        		cr.accept(cn, 0);
         		List<MethodNode> methods = cn.methods
         			.stream()
         			.filter(node -> {
@@ -308,6 +315,21 @@ public class Matcher {
         		}else {
         			ret.add(methods.get(0).instructions);	
         		}
+        		
+        		cn.methods
+        			.stream()
+        			.map(m -> m.instructions)
+        			.map(insLst -> {
+        				Iterable<AbstractInsnNode> iterable = () -> insLst.iterator();
+        				return StreamSupport.stream(iterable.spliterator(), false);
+        			})
+        			.flatMap(Function.identity())
+        			.filter(ins -> ins instanceof InvokeDynamicInsnNode)
+        			.map(InvokeDynamicInsnNode.class::cast)
+        			.forEach(ins -> {
+        				System.out.println("test"); //actual desc in ins.bdsmArgs[2]
+        			});
+        		
     		}
     	}catch(IOException e) {
     		throw new UncheckedIOException(e);
