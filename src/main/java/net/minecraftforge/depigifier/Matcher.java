@@ -315,21 +315,6 @@ public class Matcher {
         		}else {
         			ret.add(methods.get(0).instructions);	
         		}
-        		
-        		cn.methods
-        			.stream()
-        			.map(m -> m.instructions)
-        			.map(insLst -> {
-        				Iterable<AbstractInsnNode> iterable = () -> insLst.iterator();
-        				return StreamSupport.stream(iterable.spliterator(), false);
-        			})
-        			.flatMap(Function.identity())
-        			.filter(ins -> ins instanceof InvokeDynamicInsnNode)
-        			.map(InvokeDynamicInsnNode.class::cast)
-        			.forEach(ins -> {
-        				System.out.println("test"); //actual desc in ins.bdsmArgs[2]
-        			});
-        		
     		}
     	}catch(IOException e) {
     		throw new UncheckedIOException(e);
