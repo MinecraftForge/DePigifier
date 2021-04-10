@@ -198,7 +198,11 @@ public class Matcher {
         Map<String, String> lambdaMappings = new HashMap<>();
         List<Method> lambdasOld = getLambdas(old);
         List<Method> lambdasNew = getLambdas(nw);
-        if(lambdasOld.size() > 1 && lambdasNew.size() > 1) {
+        if(lambdasOld.size() > 0 && lambdasNew.size() > 0) {
+        	// TODO: fix this, if two lambdas swap name, computeLambda is not called, since all names are still present.
+        	// But if we remove the following lines and always call computeLambda we may get an Duplicate key exception,
+        	// because the lambdaMappings contains a mapping, but the value name is an allready existing method name.
+        	// An example would be the lambda 'lambda$fillCrashReportCategory$1()Ljava/lang/String;' in class WorldInfo (1.15.2) / IWorldInfo (1.16.5)
             List<Method> commonForNew = new ArrayList<>();
             List<Method> commonForOld = lambdasOld.stream()
                     .filter(oltMtd ->
