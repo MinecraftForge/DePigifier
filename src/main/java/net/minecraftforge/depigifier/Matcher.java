@@ -27,10 +27,8 @@ import net.minecraftforge.depigifier.model.Tree;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Type;
-import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
-import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,13 +39,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
+import java.util.Map.Entry;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -180,7 +177,7 @@ public class Matcher {
                 peek(e -> connector.accept(e.getValue(), e.getKey())).
                 map(AbstractMap.SimpleImmutableEntry::getValue).
                 collect(Collectors.toList());
-        missingTracker.get().addAll(missingValues.stream().map(n -> oldLookup.apply(transformedOldNames.get(n))).collect(Collectors.toList()));
+        missingTracker.get().addAll(missingValues.stream().filter(n -> !n.startsWith("&")).map(n -> oldLookup.apply(transformedOldNames.get(n))).collect(Collectors.toList()));
         existingTracker.get().addAll(commonValues);
         newTracker.get().addAll(newValues.stream().map(newLookup).collect(Collectors.toList()));
     }
@@ -198,46 +195,52 @@ public class Matcher {
         Map<String, String> lambdaMappings = new HashMap<>();
         List<Method> lambdasOld = getLambdas(old);
         List<Method> lambdasNew = getLambdas(nw);
-        if(lambdasOld.size() > 0 && lambdasNew.size() > 0) {
-        	// TODO: fix this, if two lambdas swap name, computeLambda is not called, since all names are still present.
-        	// But if we remove the following lines and always call computeLambda we may get an Duplicate key exception,
-        	// because the lambdaMappings contains a mapping, but the value name is an allready existing method name.
-        	// An example would be the lambda 'lambda$fillCrashReportCategory$1()Ljava/lang/String;' in class WorldInfo (1.15.2) / IWorldInfo (1.16.5)
-            List<Method> commonForNew = new ArrayList<>();
-            List<Method> commonForOld = lambdasOld.stream()
-                    .filter(oltMtd ->
-                            lambdasNew.stream()
-                                    .anyMatch(newMtd -> {
-                                        boolean match = oltMtd.getOldName().equals(newMtd.getOldName()) && oltMtd.getNewDesc(newTree).equals(newMtd.getNewDesc(newTree));
-                                        if(match && !commonForNew.contains(newMtd))
-                                            commonForNew.add(newMtd);
-                                        return match;
-                                    }))
-                    .collect(Collectors.toList());
-            lambdasOld.removeAll(commonForOld);
-            lambdasNew.removeAll(commonForNew);
+		if(!lambdasOld.isEmpty() && !lambdasNew.isEmpty()) {
+			computeLambdas(lambdasOld, lambdasNew, lambdaMappings, oldJar, newJar);
 
-            int lambdaCounter = computeLambdas(lambdasOld, lambdasNew, lambdaMappings, oldJar, newJar);
+			// A lambda from the old jar gets mapped to a new lambda in the new jar.
+			// If this new lambda already exists in the old jar, then the already existing
+			// one also need to be mapped to avoid a crash.
+			// e.g. we find a mapping lambda$null$1 -> lambda$null$5, but a lambda
+			// "lambda$null$5" is also present in
+			// the old jar. So we add a mapping lambda$null$5 -> &lambda$null$5 to prevent a
+			// crash in differenceSet.
+			Map<String, String> collisionResolution = new HashMap<>();
+			for(Entry<String, String> mapping : lambdaMappings.entrySet()) {
+				if(mapping.getKey().equals(mapping.getValue())) {
+					continue;
+				}
 
-            mtdMapper = oldSig -> {
-                String mappedSig = mapMethod(old.getOldName(), oldSig);
-                if(!mappedSig.equals(oldSig))
-                    return mappedSig;
-                return lambdaMappings.getOrDefault(oldSig, oldSig);
-            };
-        }
+				String newName = mapping.getValue();
+				while(old.getMethodSignatures().contains(newName)) {
+					if(lambdaMappings.containsKey(newName)) {
+						newName = lambdaMappings.get(newName);
+					}else {
+						collisionResolution.put(mapping.getValue(), "&" + mapping.getValue());
+						break;
+					}
+				}
+			}
+			lambdaMappings.putAll(collisionResolution);
+
+			mtdMapper = oldSig -> {
+				String mappedSig = mapMethod(old.getOldName(), oldSig);
+				if(!mappedSig.equals(oldSig))
+					return mappedSig;
+				return lambdaMappings.getOrDefault(oldSig, oldSig);
+			};
+		}
 
         differenceSet(old::getFieldNames, nw::getFieldNames, fld -> mapField(old.getOldName(), fld), old::tryField, nw::tryField, forcedFields::put,()->newFieldTracked, ArrayList::new, ()->missingFields);
         differenceSet(old::getMethodSignatures, nw::getMethodSignatures, mtdMapper, sig -> tryMethod.apply(old, sig), sig -> tryMethod.apply(nw, sig), forcedMethods::put,()->newMethodTracked, ArrayList::new, ()->missingMethods);
 
     }
     
-    private int computeLambdas(List<Method> oldLambdas, List<Method> newLambdas, Map<String, String> matcher, Path oldJar, Path newJar) {
+    private void computeLambdas(List<Method> oldLambdas, List<Method> newLambdas, Map<String, String> matcher, Path oldJar, Path newJar) {
         if(oldLambdas.isEmpty() || newLambdas.isEmpty()) {
-        	return 0;
+        	return;
         }
     	
-    	int counter = 0;
         List<InsnList> oldLambdasInsn = getInstructions(oldJar, oldLambdas, oldTree);
         List<InsnList> newLambdasInsn = getInstructions(newJar, newLambdas, newTree);
         
@@ -267,20 +270,21 @@ public class Matcher {
         	if(!matches.isEmpty()) {
         		matches.sort(Comparator.comparingDouble(Map.Entry::getValue));
         		
-        		if(matches.get(0).getValue() <= 0.15D && (matches.size() == 1 || matches.get(1).getValue() > 0.2D)) {            		
+        		boolean perfectMatch = matches.get(0).getValue() == 0.0 && (matches.size() == 1 || matches.get(1).getValue() > 0.0);
+        		boolean similarEnough = matches.get(0).getValue() <= 0.15 && (matches.size() == 1 || matches.get(1).getValue() > 0.2);
+        		if(perfectMatch || similarEnough) {         		
             		Method matchingLambda = newLambdas.get(matches.get(0).getKey());
             		
             		String newSig = matchingLambda.getOldName() + matchingLambda.getOldDesc();
             		if(matcher.containsValue(newSig))
                         continue;
                     matcher.put(oldLambdas.get(i).getOldName() + oldLambdas.get(i).getOldDesc(), newSig);
-                    counter += 1;
         		}
         	}
         	
         }
         
-        return counter;
+        return;
     }
 
     
