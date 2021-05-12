@@ -39,8 +39,7 @@ ext {
 
 repositories {
     mavenLocal()
-    maven { url = 'https://files.minecraftforge.net/maven' }
-    jcenter()
+    maven { url = 'https://maven.minecraftforge.net' }
     mavenCentral()
 }
 
