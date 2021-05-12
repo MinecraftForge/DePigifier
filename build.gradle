@@ -67,7 +67,6 @@ shadowJar {
     classifier 'fatjar'
     manifest.from(MANIFEST)
 }
-build.dependsOn shadowJar
 
 publishing {
     publications.create("mavenJava", MavenPublication) {
