@@ -9,7 +9,7 @@ plugins {
 
 group 'net.minecraftforge'
 version = gitVersion()
-targetCompatibility = sourceCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8'
+
 def gitVersion() {
     def raw = grgit.describe(longDescr: true, tags:true)
     def desc = (raw == null ? 'unknown-offset-hash' : raw).split('-') as List
@@ -49,6 +49,10 @@ test {
 
 license {
     header = file('LICENSE-header.txt')
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(8)
 }
 
 dependencies {
