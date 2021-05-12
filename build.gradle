@@ -73,45 +73,43 @@ artifacts {
 }
 
 publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            if (CHANGELOG.exists()) {
-                artifact(CHANGELOG) {
-                    classifier = 'changelog'
+    publications.create("mavenJava", MavenPublication) {
+        if (CHANGELOG.exists()) {
+            artifact(CHANGELOG) {
+                classifier = 'changelog'
+            }
+        }
+        artifact jar
+        artifact shadowJar
+        pom {
+            name = 'Depigifier'
+            description = 'Remaps SRG files based on Proguard data'
+            url = 'https://github.com/MinecraftForge/Depigifier'
+            scm {
+                url = 'https://github.com/MinecraftForge/Depigifier'
+                connection = 'scm:git:git://github.com/MinecraftForge/Depigifier.git'
+                developerConnection = 'scm:git:git@github.com:MinecraftForge/Depigifier.git'
+            }
+            issueManagement {
+                system = 'github'
+                url = 'https://github.com/MinecraftForge/Depigifier/issues'
+            }
+
+            licenses {
+                license {
+                    name = 'LGPLv2.1'
+                    url = 'https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt'
                 }
             }
-            artifact jar
-            artifact shadowJar
-            pom {
-                name = 'Depigifier'
-                description = 'Remaps SRG files based on Proguard data'
-                url = 'https://github.com/MinecraftForge/Depigifier'
-                scm {
-                    url = 'https://github.com/MinecraftForge/Depigifier'
-                    connection = 'scm:git:git://github.com/MinecraftForge/Depigifier.git'
-                    developerConnection = 'scm:git:git@github.com:MinecraftForge/Depigifier.git'
-                }
-                issueManagement {
-                    system = 'github'
-                    url = 'https://github.com/MinecraftForge/Depigifier/issues'
-                }
 
-                licenses {
-                    license {
-                        name = 'LGPLv2.1'
-                        url = 'https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt'
-                    }
+            developers {
+                developer {
+                    id = 'cpw'
+                    name = 'cpw'
                 }
-
-                developers {
-                    developer {
-                        id = 'cpw'
-                        name = 'cpw'
-                    }
-                    developer {
-                        id = 'LexManos'
-                        name = 'LexManos'
-                    }
+                developer {
+                    id = 'LexManos'
+                    name = 'LexManos'
                 }
             }
         }
