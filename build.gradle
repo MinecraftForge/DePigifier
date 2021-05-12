@@ -68,9 +68,6 @@ shadowJar {
     manifest.from(MANIFEST)
 }
 build.dependsOn shadowJar
-artifacts {
-    archives shadowJar
-}
 
 publishing {
     publications.create("mavenJava", MavenPublication) {
@@ -79,8 +76,8 @@ publishing {
                 classifier = 'changelog'
             }
         }
-        artifact jar
-        artifact shadowJar
+        from components.java
+
         pom {
             name = 'Depigifier'
             description = 'Remaps SRG files based on Proguard data'
