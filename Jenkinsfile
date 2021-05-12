@@ -3,7 +3,7 @@
 pipeline {
     agent {
         docker {
-            image 'gradlewrapper:latest'
+            image 'gradle:jdk8'
             args '-v gradlecache:/gradlecache'
         }
     }
@@ -15,6 +15,11 @@ pipeline {
     }
 
     stages {
+        stage('fetch') {
+            steps {
+                checkout scm
+            }
+        }
         stage('notify_start') {
             when {
                 not {
@@ -33,7 +38,9 @@ pipeline {
         }
         stage('buildandtest') {
             steps {
-                sh './gradlew ${GRADLE_ARGS} --refresh-dependencies --continue build test'
+                withGradle {
+                    sh './gradlew ${GRADLE_ARGS} --refresh-dependencies --continue build test'
+                }
                 script {
                     env.MYGROUP = sh(returnStdout: true, script: './gradlew properties -q | grep "group:" | awk \'{print $2}\'').trim()
                     env.MYARTIFACT = sh(returnStdout: true, script: './gradlew properties -q | grep "name:" | awk \'{print $2}\'').trim()
@@ -53,12 +60,17 @@ pipeline {
                     changeRequest()
                 }
             }
-            environment {
-                FORGE_MAVEN = credentials('forge-maven-forge-user')
-            }
             steps {
-                sh './gradlew ${GRADLE_ARGS} publish -PforgeMavenUser=${FORGE_MAVEN_USR} -PforgeMavenPassword=${FORGE_MAVEN_PSW}'
-                sh 'curl --user ${FORGE_MAVEN} http://files.minecraftforge.net/maven/manage/promote/latest/${MYGROUP}.${MYARTIFACT}/${MYVERSION}'
+                withCredentials([usernamePassword(credentialsId: 'maven-forge-user', usernameVariable: 'MAVEN_USER', passwordVariable: 'MAVEN_PASSWORD')]) {
+                    withGradle {
+                        sh './gradlew ${GRADLE_ARGS} publish'
+                    }
+                }
+            }
+            post {
+                success {
+                    build job: 'filegenerator', parameters: [string(name: 'COMMAND', value: "promote ${env.MYGROUP}:${env.MYARTIFACT} ${env.MYVERSION} latest")], propagate: false, wait: false
+                }
             }
         }
     }

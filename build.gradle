@@ -1,24 +1,15 @@
-buildscript {
-    repositories {
-        mavenLocal()
-        maven { url = 'https://files.minecraftforge.net/maven' }
-        jcenter()
-        mavenCentral()
-    }
-}
-
 plugins {
     id 'java'
     id 'maven-publish'
-    id 'net.minecrell.licenser' version '0.4.1'
-    id 'org.ajoberstar.grgit' version '3.1.1'
-    id 'com.github.ben-manes.versions' version '0.24.0'
-    id 'com.github.johnrengelman.shadow' version '5.1.0'
+    id 'org.cadixdev.licenser' version '0.6.0'
+    id 'org.ajoberstar.grgit' version '4.1.0'
+    id 'com.github.ben-manes.versions' version '0.38.0'
+    id 'com.github.johnrengelman.shadow' version '7.0.0'
 }
 
 group 'net.minecraftforge'
 version = gitVersion()
-targetCompatibility = sourceCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8'
+
 def gitVersion() {
     def raw = grgit.describe(longDescr: true, tags:true)
     def desc = (raw == null ? 'unknown-offset-hash' : raw).split('-') as List
@@ -48,8 +39,7 @@ ext {
 
 repositories {
     mavenLocal()
-    maven { url = 'https://files.minecraftforge.net/maven' }
-    jcenter()
+    maven { url = 'https://maven.minecraftforge.net' }
     mavenCentral()
 }
 
@@ -61,78 +51,79 @@ license {
     header = file('LICENSE-header.txt')
 }
 
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(8)
+}
+
 dependencies {
     testImplementation('org.junit.jupiter:junit-jupiter:5.5.+')
     testImplementation('org.powermock:powermock-core:2.0+')
     implementation('net.sf.jopt-simple:jopt-simple:5.0.4')
     implementation('com.machinezoo.noexception:noexception:1.3.4')
-    implementation('org.slf4j:slf4j-api:1.7.28')
-    implementation('org.slf4j:slf4j-simple:1.7.28')
-    implementation('org.ow2.asm:asm:7.1')
-    implementation('net.minecraftforge:srgutils:0.2.7')
+    implementation('org.slf4j:slf4j-api:1.7.30')
+    implementation('org.slf4j:slf4j-simple:1.7.30')
+    implementation('org.ow2.asm:asm:9.1')
+    implementation('net.minecraftforge:srgutils:0.4.3')
 }
 
 shadowJar {
     classifier 'fatjar'
     manifest.from(MANIFEST)
 }
-build.dependsOn shadowJar
-artifacts {
-    archives shadowJar
-}
 
 publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            if (CHANGELOG.exists()) {
-                artifact(CHANGELOG) {
-                    classifier = 'changelog'
+    publications.create("mavenJava", MavenPublication) {
+        if (CHANGELOG.exists()) {
+            artifact(CHANGELOG) {
+                classifier = 'changelog'
+            }
+        }
+        from components.java
+
+        pom {
+            name = 'Depigifier'
+            description = 'Remaps SRG files based on Proguard data'
+            url = 'https://github.com/MinecraftForge/Depigifier'
+            scm {
+                url = 'https://github.com/MinecraftForge/Depigifier'
+                connection = 'scm:git:git://github.com/MinecraftForge/Depigifier.git'
+                developerConnection = 'scm:git:git@github.com:MinecraftForge/Depigifier.git'
+            }
+            issueManagement {
+                system = 'github'
+                url = 'https://github.com/MinecraftForge/Depigifier/issues'
+            }
+
+            licenses {
+                license {
+                    name = 'LGPLv2.1'
+                    url = 'https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt'
                 }
             }
-            artifact jar
-            artifact shadowJar
-            pom {
-                name = 'Depigifier'
-                description = 'Remaps SRG files based on Proguard data'
-                url = 'https://github.com/MinecraftForge/Depigifier'
-                scm {
-                    url = 'https://github.com/MinecraftForge/Depigifier'
-                    connection = 'scm:git:git://github.com/MinecraftForge/Depigifier.git'
-                    developerConnection = 'scm:git:git@github.com:MinecraftForge/Depigifier.git'
-                }
-                issueManagement {
-                    system = 'github'
-                    url = 'https://github.com/MinecraftForge/Depigifier/issues'
-                }
 
-                licenses {
-                    license {
-                        name = 'LGPLv2.1'
-                        url = 'https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt'
-                    }
+            developers {
+                developer {
+                    id = 'cpw'
+                    name = 'cpw'
                 }
-
-                developers {
-                    developer {
-                        id = 'cpw'
-                        name = 'cpw'
-                    }
-                    developer {
-                        id = 'LexManos'
-                        name = 'LexManos'
-                    }
+                developer {
+                    id = 'LexManos'
+                    name = 'LexManos'
                 }
             }
         }
     }
     repositories {
         maven {
-            if (project.hasProperty('forgeMavenPassword')) {
-                credentials {
-                    username project.properties.forgeMavenUser
-                    password project.properties.forgeMavenPassword
+            if (System.env.MAVEN_USER) {
+                url 'https://maven.minecraftforge.net/'
+                authentication {
+                    basic(BasicAuthentication)
                 }
-                url 'https://files.minecraftforge.net/maven/manage/upload'
+                credentials {
+                    username = System.env.MAVEN_USER ?: 'not'
+                    password = System.env.MAVEN_PASSWORD ?: 'set'
+                }
             } else {
                 url 'file://' + rootProject.file('repo').getAbsolutePath()
             }
