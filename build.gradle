@@ -68,7 +68,7 @@ dependencies {
     implementation('com.machinezoo.noexception:noexception:1.3.4')
     implementation('org.slf4j:slf4j-api:1.7.30')
     implementation('org.slf4j:slf4j-simple:1.7.30')
-    implementation('org.ow2.asm:asm:7.1')
+    implementation('org.ow2.asm:asm:9.1')
     implementation('net.minecraftforge:srgutils:0.2.7')
 }
 
