@@ -330,7 +330,6 @@ public class Matcher {
     	return ret;
     }
 
-
     public void addMapper(final IMapper mapper) {
         mappers.add(mapper);
     }

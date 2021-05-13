@@ -50,7 +50,7 @@ public class Unpig {
                 withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
                 required();
         final ArgumentAcceptingOptionSpec<Path> oldJarFile = optionParser.accepts("oldJar", "Old jar file").
-        		withRequiredArg().
+                withRequiredArg().
                 withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
                 required();
         final ArgumentAcceptingOptionSpec<Path> newPGFile = optionParser.accepts("newPG", "New ProGuard file").
@@ -58,7 +58,7 @@ public class Unpig {
                 withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
                 required();
         final ArgumentAcceptingOptionSpec<Path> newJarFile = optionParser.accepts("newJar", "New jar file").
-        		withRequiredArg().
+                withRequiredArg().
                 withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
                 required();
         final ArgumentAcceptingOptionSpec<Path> outDir = optionParser.accepts("out", "Directory to output to").
