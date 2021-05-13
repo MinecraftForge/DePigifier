@@ -25,6 +25,7 @@ import net.minecraftforge.depigifier.model.Field;
 import net.minecraftforge.depigifier.model.Method;
 import net.minecraftforge.depigifier.model.Tree;
 
+import org.objectweb.asm.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -98,6 +99,7 @@ public class Matcher {
         Exceptions.sneak().run(()->Files.write(tsrgOut, tsrgLines, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE));
         System.out.println("Fields : " + missingFields.size() + "/" + newFields.size() + "/" + newTree.getClasses().stream().mapToInt(c -> c.getFields().size()).sum());
         System.out.println("Methods: " + missingMethods.size() + "/" + newMethods.size() + "/" + newTree.getClasses().stream().mapToInt(c -> c.getMethods().size()).sum());
+        System.out.println("Computed " + lambdaCounter + " lambda differences.");
 
         dumpMagiDots();
 
@@ -169,6 +171,8 @@ public class Matcher {
         newTracker.get().addAll(newValues.stream().map(newLookup).collect(Collectors.toList()));
     }
 
+    private static int lambdaCounter = 0;
+
     private void compareClass(final Class entry, final List<Field> newFieldTracked, final List<Method> newMethodTracked, final List<Field> missingFields, final List<Method> missingMethods) {
         final Class old = forcedClasses.get(entry);
         final Class nw = entry;
@@ -177,8 +181,89 @@ public class Matcher {
             return cls.tryMethod(sig.substring(0, idx), sig.substring(idx));
         };
 
+        Function<String, String> mtdMapper = (sig -> mapMethod(old.getOldName(), sig));
+
+        Map<String, String> lambdaMappings = new HashMap<>();
+        List<Method> lambdasOld = getLambdas(old);
+        List<Method> lambdasNew = getLambdas(nw);
+        if(lambdasOld.size() > 1 && lambdasNew.size() > 1) {
+            List<Method> commonForNew = new ArrayList<>();
+            List<Method> commonForOld = lambdasOld.stream()
+                    .filter(oltMtd ->
+                            lambdasNew.stream()
+                                    .anyMatch(newMtd -> {
+                                        boolean match = oltMtd.getOldName().equals(newMtd.getOldName()) && oltMtd.getNewDesc(newTree).equals(newMtd.getNewDesc(newTree));
+                                        if(match && !commonForNew.contains(newMtd))
+                                            commonForNew.add(newMtd);
+                                        return match;
+                                    }))
+                    .collect(Collectors.toList());
+            lambdasOld.removeAll(commonForOld);
+            lambdasNew.removeAll(commonForNew);
+
+            lambdaCounter += computeLambdas(lambdasOld, lambdasNew, lambdaMappings);
+
+            mtdMapper = oldSig -> {
+                String mappedSig = mapMethod(old.getOldName(), oldSig);
+                if(!mappedSig.equals(oldSig))
+                    return mappedSig;
+                return lambdaMappings.getOrDefault(oldSig, oldSig);
+            };
+        }
+
         differenceSet(old::getFieldNames, nw::getFieldNames, fld -> mapField(old.getOldName(), fld), old::tryField, nw::tryField, forcedFields::put,()->newFieldTracked, ArrayList::new, ()->missingFields);
-        differenceSet(old::getMethodSignatures, nw::getMethodSignatures, s -> mapMethod(old.getOldName(), s), sig -> tryMethod.apply(old, sig), sig -> tryMethod.apply(nw, sig), forcedMethods::put,()->newMethodTracked, ArrayList::new, ()->missingMethods);
+        differenceSet(old::getMethodSignatures, nw::getMethodSignatures, mtdMapper, sig -> tryMethod.apply(old, sig), sig -> tryMethod.apply(nw, sig), forcedMethods::put,()->newMethodTracked, ArrayList::new, ()->missingMethods);
+    }
+
+    private int computeLambdas(List<Method> oldLambdas, List<Method> newLambdas, Map<String, String> matcher) {
+        int counter = 0;
+        for(Method oldMtd : oldLambdas) {
+            String desc = oldMtd.getNewDesc(newTree);
+            String name = oldMtd.getOldName().replaceFirst("lambda\\$", "");
+            String lambdaContainer = name.substring(0, name.lastIndexOf('$'));
+            int nb = Integer.parseInt(name.substring(name.lastIndexOf('$')+1));
+
+            List<Type> args = Arrays.asList(Type.getArgumentTypes(desc));
+            Type lastArg = args.isEmpty() ? null : args.get(args.size()-1);
+            Type retType = Type.getReturnType(desc);
+
+            List<Method> matching = newLambdas.stream().filter(m -> {
+                String newDesc = m.getNewDesc(newTree);
+                if(!Type.getReturnType(newDesc).equals(retType))
+                    return false;
+
+                String newName = m.getOldName().replaceFirst("lambda\\$", "");
+                String newLambdaContainer = newName.substring(0, newName.lastIndexOf('$'));
+                int newNb = Integer.parseInt(newName.substring(newName.lastIndexOf('$')+1));
+
+                if(!newLambdaContainer.equals(lambdaContainer))
+                    return false;
+
+                List<Type> newArgs = Arrays.asList(Type.getArgumentTypes(newDesc));
+                if(!newArgs.isEmpty())
+                    return newArgs.get(newArgs.size() -1).equals(lastArg);
+
+                return lastArg == null;
+            }).collect(Collectors.toList());
+
+            //perhaps post process the matching list to find the best match, instead of limiting to single matches
+            if(matching.size() != 1)
+                continue;
+
+            String newSig = matching.get(0).getOldName() + matching.get(0).getOldDesc();
+            if(matcher.containsValue(newSig))
+                continue;
+            matcher.put(oldMtd.getOldName() + oldMtd.getOldDesc(), newSig);
+            counter += matching.size();
+        }
+        return counter;
+    }
+
+    private List<Method> getLambdas(Class clazz) {
+        return clazz.getMethods()
+                .stream()
+                .filter(mtd -> mtd.getOldName().contains("lambda$"))
+                .collect(Collectors.toList());
     }
 
     public void addMapper(final IMapper mapper) {
