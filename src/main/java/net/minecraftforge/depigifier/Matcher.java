@@ -215,6 +215,10 @@ public class Matcher {
 				while(old.getMethodSignatures().contains(newName)) {
 					if(lambdaMappings.containsKey(newName)) {
 						newName = lambdaMappings.get(newName);
+						if(newName.equals(mapping.getValue())) {
+							//found a circle
+							break;
+						}
 					}else {
 						collisionResolution.put(mapping.getValue(), "&" + mapping.getValue());
 						break;
