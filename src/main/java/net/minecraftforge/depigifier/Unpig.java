@@ -49,7 +49,15 @@ public class Unpig {
                 withRequiredArg().
                 withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
                 required();
+        final ArgumentAcceptingOptionSpec<Path> oldJarFile = optionParser.accepts("oldJar", "Old jar file").
+                withRequiredArg().
+                withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
+                required();
         final ArgumentAcceptingOptionSpec<Path> newPGFile = optionParser.accepts("newPG", "New ProGuard file").
+                withRequiredArg().
+                withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
+                required();
+        final ArgumentAcceptingOptionSpec<Path> newJarFile = optionParser.accepts("newJar", "New jar file").
                 withRequiredArg().
                 withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
                 required();
@@ -76,12 +84,17 @@ public class Unpig {
 
         final Path oldPG = argset.valueOf(oldPGFile);
         final Path newPG = argset.valueOf(newPGFile);
+        
+        final Path oldJar = argset.valueOf(oldJarFile);
+        final Path newJar = argset.valueOf(newJarFile);
         //final Path srgFile = argset.valueOf(inSrgFile);
         final Path output = argset.valueOf(outDir);
         final Path manualMap = argset.valueOf(manualMapFile);
 
         final Tree oldTree = Tree.from(IMappingFile.load(oldPG.toFile()), true);
+        final Tree oldTreeReversed = Tree.from(IMappingFile.load(oldPG.toFile()).reverse(), true);
         final Tree newTree = Tree.from(IMappingFile.load(newPG.toFile()), true);
+        final Tree newTreeReversed = Tree.from(IMappingFile.load(newPG.toFile()).reverse(), true);
         /*
         if (argset.has(inSrgFile)) {
             final TSRGFile tsrgFile = new TSRGFile(srgFile, oldProguard);
@@ -98,13 +111,13 @@ public class Unpig {
             }
         }
 
-        Matcher comp = new Matcher(oldTree, newTree, output);
+        Matcher comp = new Matcher(oldTree, oldTreeReversed, newTree, newTreeReversed, output);
 
         if (argset.has(manualMapFile)) {
             final Tree manualMappings = Tree.from(IMappingFile.load(manualMap.toFile()), false);
             comp.addMapper(manualMappings);
         }
         comp.computeClassListDifferences();
-        comp.compareExistingClasses();
+        comp.compareExistingClasses(oldJar, newJar);
     }
 }
