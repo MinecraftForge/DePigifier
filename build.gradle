@@ -2,24 +2,15 @@ plugins {
     id 'java'
     id 'maven-publish'
     id 'org.cadixdev.licenser' version '0.6.0'
-    id 'org.ajoberstar.grgit' version '4.1.0'
-    id 'com.github.ben-manes.versions' version '0.38.0'
+    id 'net.minecraftforge.gradleutils' version '2.+'
+    id 'com.github.ben-manes.versions' version '0.39.0'
     id 'com.github.johnrengelman.shadow' version '7.0.0'
 }
 
 group 'net.minecraftforge'
-version = gitVersion()
 
-def gitVersion() {
-    def raw = grgit.describe(longDescr: true, tags:true)
-    def desc = (raw == null ? 'unknown-offset-hash' : raw).split('-') as List
-    def hash = desc.remove(desc.size() - 1)
-    def offset = desc.remove(desc.size() - 1)
-    def tag = desc.join('-')
-    def branch = grgit.branch.current().name
-    project.ext.SPEC_VERSION = tag
-    return "${tag}.${offset}${t -> if (branch != 'master') t << '-' + branch}"
-}
+version = gradleutils.getTagOffsetVersion()
+logger.lifecycle('Version: ' + version)
 
 ext {
     CHANGELOG = rootProject.file('build/changelog.txt')
@@ -35,6 +26,7 @@ ext {
             'Implementation-Vendor':    'Forge Development LLC'
         ] as LinkedHashMap, 'net/minecraftforge/depigifier/')
     }
+    MIN_CHANGELOG_TAG = '1.0'
 }
 
 repositories {
@@ -114,20 +106,7 @@ publishing {
         }
     }
     repositories {
-        maven {
-            if (System.env.MAVEN_USER) {
-                url 'https://maven.minecraftforge.net/'
-                authentication {
-                    basic(BasicAuthentication)
-                }
-                credentials {
-                    username = System.env.MAVEN_USER ?: 'not'
-                    password = System.env.MAVEN_PASSWORD ?: 'set'
-                }
-            } else {
-                url 'file://' + rootProject.file('repo').getAbsolutePath()
-            }
-        }
+        maven gradleutils.getPublishingForgeMaven()
     }
 }
 
@@ -144,3 +123,6 @@ dependencyUpdates.resolutionStrategy {
     }
 }
 
+changelog {
+    fromTag MIN_CHANGELOG_TAG
+}
