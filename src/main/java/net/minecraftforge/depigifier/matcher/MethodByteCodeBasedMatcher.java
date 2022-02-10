@@ -47,6 +47,13 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
     }
 
     @Override
+    protected void outputAdditionalStatistics()
+    {
+        super.outputAdditionalStatistics();
+        System.out.println("Lambda rematches: " + rematchedLambdas);
+    }
+
+    @Override
     protected void determineMethodDifferencesOf(
       final List<Method> newMethodTracked, final List<Method> missingMethods, final Class oldClass, final Class newClass, final BiFunction<Class, String, Method> methodGetter)
     {
@@ -80,25 +87,29 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
             final String[] oldMethod = oldMethodContents.get(missingMethod);
 
             final List<String[]> matchingCandidates = newMethodContents.keys()
-                                                              .stream()
-                                                              .filter(newMethod -> doCompareMethodsUsingStaticContentAnalysis(oldMethod, newMethod))
-                                                              .collect(Collectors.toList());
+              .stream()
+              .filter(newMethod -> doCompareMethodsUsingStaticContentAnalysis(oldMethod, newMethod))
+              .collect(Collectors.toList());
 
-            if (matchingCandidates.size() > 1) {
+            if (matchingCandidates.size() > 1)
+            {
                 matchingCandidates.removeIf(newMethod -> newMethodContents.get(newMethod).size() > 1);
             }
 
-            if(matchingCandidates.size() == 1) {
+            if (matchingCandidates.size() == 1)
+            {
                 final String[] newMethod = matchingCandidates.get(0);
                 final Collection<Method> newMethodCandidates = newMethodContents.get(newMethod); //This should be 1 :')
 
-                if (newMethodCandidates.size() == 1) {
+                if (newMethodCandidates.size() == 1)
+                {
                     final Method newMethodCandidate = newMethodCandidates.iterator().next();
                     forcedMethods.put(newMethodCandidate, missingMethod);
 
                     rematchedLambdas++;
 
-                    if (!signatureNewMethods.remove(newMethodCandidate)) {
+                    if (!signatureNewMethods.remove(newMethodCandidate))
+                    {
                         System.out.println("REMAPPING a lambda method that was not new in the new class: " + newMethodCandidate.toString());
                     }
 
@@ -113,13 +124,6 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
         missingMethods.addAll(signatureMissingMethods);
     }
 
-    @Override
-    protected void outputAdditionalStatistics()
-    {
-        super.outputAdditionalStatistics();
-        System.out.println("Lambda rematches: " + rematchedLambdas);
-    }
-
     private boolean doCompareMethodsUsingStaticContentAnalysis(final String[] oldMethod, final String[] newMethod)
     {
         return doCompareMethodsUsingStaticContentAnalysis(
@@ -130,7 +134,11 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
         );
     }
 
-    private boolean doCompareMethodsUsingStaticContentAnalysis(final String[] oldMethod, final String[] newMethod, final Set<String> recursivelyAnalyzedOldMethods, final Set<String> recursivelyAnalyzedNewMethods)
+    private boolean doCompareMethodsUsingStaticContentAnalysis(
+      final String[] oldMethod,
+      final String[] newMethod,
+      final Set<String> recursivelyAnalyzedOldMethods,
+      final Set<String> recursivelyAnalyzedNewMethods)
     {
         if (oldMethod == null || newMethod == null)
         {
@@ -171,58 +179,67 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
       final Set<String> recursivelyAnalyzedNewMethods)
     {
         //At the moment we only have special invocation checking for INVOKEVIRTUAL, anything else we currently consider simply not equal
-        if (oldStatement.startsWith("INVOKEVIRTUAL"))
+        if (oldStatement.startsWith("INVOKEVIRTUAL") && newStatement.startsWith("INVOKEVIRTUAL"))
         {
-            if (newStatement.startsWith("INVOKEVIRTUAL"))
-            {
-                //Both old and new method have an INVOKEVIRTUAL, we need to check if the method in the end does the same...
-                final String oldInvocationTarget = oldStatement.replace("INVOKEVIRTUAL ", "");
-                final String newInvocationTarget = newStatement.replace("INVOKEVIRTUAL ", "");
-
-                if (recursivelyAnalyzedOldMethods.contains(oldInvocationTarget) && recursivelyAnalyzedNewMethods.contains(newInvocationTarget)) {
-                    //Recursive call detection, this is the best we can do at the moment, if this breaks we can always return false here....
-                    return true;
-                }
-
-                final String oldClass = oldInvocationTarget.substring(0, oldInvocationTarget.indexOf("."));
-                final String newClass = newInvocationTarget.substring(0, newInvocationTarget.indexOf("."));
-
-                final String oldSignature = oldInvocationTarget.replace(oldClass + ".", "");
-                final String newSignature = newInvocationTarget.replace(newClass + ".", "");
-
-                final String oldName = oldSignature.substring(0, oldSignature.indexOf(" "));
-                final String newName = newSignature.substring(0, newSignature.indexOf(" "));
-
-                final String oldDescriptor = oldSignature.replace(oldName + " ", "");
-                final String newDescriptor = newSignature.replace(newName + " ", "");
-
-                recursivelyAnalyzedOldMethods.add(oldInvocationTarget);
-                recursivelyAnalyzedNewMethods.add(newInvocationTarget);
-
-                doCompareMethodsUsingStaticContentAnalysis(
-                  ASMUtils.getMethod(this.oldJarFs, oldClass, oldName, oldDescriptor),
-                  ASMUtils.getMethod(this.newJarFs, newClass, newName, newDescriptor),
-                  recursivelyAnalyzedOldMethods,
-                  recursivelyAnalyzedNewMethods
-                );
-            }
+            return doCompareInvokeVirtualStatements(oldStatement,
+              newStatement,
+              recursivelyAnalyzedOldMethods,
+              recursivelyAnalyzedNewMethods);
         }
 
         //No invocations, process field access
         //Get field first.
-        if (oldStatement.startsWith("GETFIELD")) {
-            if (newStatement.startsWith("GETFIELD")) {
-                return doCompareFieldAccessStatements("GETFIELD", oldStatement, newStatement);
-            }
+        if (oldStatement.startsWith("GETFIELD") && newStatement.startsWith("GETFIELD"))
+        {
+            return doCompareFieldAccessStatements("GETFIELD", oldStatement, newStatement);
         }
 
         //Put field second.
-        if (oldStatement.startsWith("PUTFIELD")) {
-            if (newStatement.startsWith("PUTFIELD")) {
-                return doCompareFieldAccessStatements("PUTFIELD", oldStatement, newStatement);
-            }
+        if (oldStatement.startsWith("PUTFIELD") && newStatement.startsWith("PUTFIELD"))
+        {
+            return doCompareFieldAccessStatements("PUTFIELD", oldStatement, newStatement);
         }
 
+        return false;
+    }
+
+    private boolean doCompareInvokeVirtualStatements(
+      final String oldStatement,
+      final String newStatement,
+      final Set<String> recursivelyAnalyzedOldMethods,
+      final Set<String> recursivelyAnalyzedNewMethods)
+    {
+        //Both old and new method have an INVOKEVIRTUAL, we need to check if the method in the end does the same...
+        final String oldInvocationTarget = oldStatement.replace("INVOKEVIRTUAL ", "");
+        final String newInvocationTarget = newStatement.replace("INVOKEVIRTUAL ", "");
+
+        if (recursivelyAnalyzedOldMethods.contains(oldInvocationTarget) && recursivelyAnalyzedNewMethods.contains(newInvocationTarget))
+        {
+            //Recursive call detection, this is the best we can do at the moment, if this breaks we can always return false here....
+            return true;
+        }
+
+        final String oldClass = oldInvocationTarget.substring(0, oldInvocationTarget.indexOf("."));
+        final String newClass = newInvocationTarget.substring(0, newInvocationTarget.indexOf("."));
+
+        final String oldSignature = oldInvocationTarget.replace(oldClass + ".", "");
+        final String newSignature = newInvocationTarget.replace(newClass + ".", "");
+
+        final String oldName = oldSignature.substring(0, oldSignature.indexOf(" "));
+        final String newName = newSignature.substring(0, newSignature.indexOf(" "));
+
+        final String oldDescriptor = oldSignature.replace(oldName + " ", "");
+        final String newDescriptor = newSignature.replace(newName + " ", "");
+
+        recursivelyAnalyzedOldMethods.add(oldInvocationTarget);
+        recursivelyAnalyzedNewMethods.add(newInvocationTarget);
+
+        doCompareMethodsUsingStaticContentAnalysis(
+          ASMUtils.getMethod(this.oldJarFs, oldClass, oldName, oldDescriptor),
+          ASMUtils.getMethod(this.newJarFs, newClass, newName, newDescriptor),
+          recursivelyAnalyzedOldMethods,
+          recursivelyAnalyzedNewMethods
+        );
         return false;
     }
 
