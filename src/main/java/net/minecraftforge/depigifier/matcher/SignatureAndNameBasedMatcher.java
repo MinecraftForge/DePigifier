@@ -106,6 +106,8 @@ public class SignatureAndNameBasedMatcher implements IMatcher
         System.out.println("Fields : " + missingFields.size() + "/" + newFields.size() + "/" + newTree.getClasses().stream().mapToInt(c -> c.getFields().size()).sum());
         System.out.println("Methods: " + missingMethods.size() + "/" + newMethods.size() + "/" + newTree.getClasses().stream().mapToInt(c -> c.getMethods().size()).sum());
 
+        outputAdditionalStatistics();
+
         dumpMagiDots();
 
         missingClasses.stream().sorted((c1, c2) -> c1.getOldName().compareTo(c2.getOldName())).forEach(m -> {
@@ -124,6 +126,11 @@ public class SignatureAndNameBasedMatcher implements IMatcher
                 }
             }
         });
+    }
+
+    protected void outputAdditionalStatistics()
+    {
+        //We don't collect additional statistics.
     }
 
     protected void determineClassDifferencesOf(
