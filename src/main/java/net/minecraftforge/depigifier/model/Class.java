@@ -105,6 +105,16 @@ public class Class {
         return mtd == null ? method : mtd.getNewName();
     }
 
+    public String unmapField(String field) {
+        Field fld = n2oFields.get(field);
+        return fld == null ? field : fld.getOldName();
+    }
+
+    public String unmapMethod(String method, String desc) {
+        Method mtd = n2oMethods.get(method + desc);
+        return mtd == null ? method : mtd.getOldName();
+    }
+
     //Package Private things are notifications from other methods, use those instead.
 
     void renameField(Field field, String newName) {

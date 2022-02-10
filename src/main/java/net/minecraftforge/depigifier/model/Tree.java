@@ -96,6 +96,27 @@ public class Tree implements IMapper {
         return _cls == null ? method : _cls.mapMethod(method, desc);
     }
 
+    public String unmapClass(String cls) {
+        Class _cls = n2oClasses.get(cls);
+        if (_cls != null)
+            return _cls.getOldName();
+        int idx = cls.lastIndexOf('$');
+        if (idx > 0)
+            return unmapClass(cls.substring(0, idx)) + cls.substring(idx);
+
+        return cls; //TODO: Packages
+    }
+
+    public String unmapField(String cls, String field) {
+        Class _cls = n2oClasses.get(cls);
+        return _cls == null ? field : _cls.unmapField(field);
+    }
+
+    public String unmapMethod(String cls, String method, String desc) {
+        Class _cls = n2oClasses.get(cls);
+        return _cls == null ? method : _cls.unmapMethod(method, desc);
+    }
+
     //Map modifiers are intentionally private you should use the rename functions in the associated objects as they will update all cached lookups.
     void renameClass(Class cls, String newName) {
         //TODO: Add check to not overwrite existing?
