@@ -264,7 +264,7 @@ public class SignatureAndNameBasedMatcher implements IMatcher
         mappers.add(mapper);
     }
 
-    private <T> void differenceSet(
+    protected <T> void differenceSet(
       final Supplier<Set<String>> old,
       final Supplier<Set<String>> nw,
       final Function<String, String> oldNameTransformer,

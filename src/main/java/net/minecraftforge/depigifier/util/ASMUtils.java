@@ -5,12 +5,12 @@ import org.objectweb.asm.util.Printer;
 import org.objectweb.asm.util.Textifier;
 import org.objectweb.asm.util.TraceClassVisitor;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
-import java.nio.file.Path;
+import java.util.Arrays;
 
 public class ASMUtils
 {
@@ -20,8 +20,8 @@ public class ASMUtils
         throw new IllegalStateException("Can not instantiate an instance of: ASMUtils. This is a utility class");
     }
 
-    public static String[] getMethod(final FileSystem jarFs, String className, String methodName, String methodDescriptor) throws RuntimeException {
-
+    public static ASMMethodData getMethod(final FileSystem jarFs, String className, String methodName, String methodDescriptor) throws RuntimeException
+    {
         try
         {
             ClassReader classReader = new ClassReader(jarFs.getPath(className + ".class").toUri().toURL().openStream());
@@ -33,17 +33,30 @@ public class ASMUtils
 
             final String result = stringWriter.toString().trim();
 
-            if (result.isEmpty()) {
+            if (result.isEmpty())
+            {
+                if (methodSelectorVisitor.isFound()) {
+                    return new ASMMethodData(toList(""), methodSelectorVisitor.getAccess(), methodSelectorVisitor.isFound(), className, methodName, methodDescriptor);
+                }
+
                 final SuperClassReadingClassVisitor superClassReadingClassVisitor = new SuperClassReadingClassVisitor();
                 classReader.accept(superClassReadingClassVisitor, ClassReader.SKIP_DEBUG);
                 final String superClassName = superClassReadingClassVisitor.getSuperClass();
 
-                if (superClassName != null && !superClassName.equals("java/lang/Object")) {
+                if (superClassName != null && !superClassName.equals("java/lang/Object"))
+                {
                     return getMethod(jarFs, superClassName, methodName, methodDescriptor);
+                }
+                else
+                {
+                    return new ASMMethodData(new String[0], 0, false, className, methodName, methodDescriptor);
                 }
             }
 
-            return toList(result);
+            return new ASMMethodData(toList(result), methodSelectorVisitor.getAccess(), methodSelectorVisitor.isFound(), className, methodName, methodDescriptor);
+        }
+        catch (FileNotFoundException e) {
+            return new ASMMethodData(toList( ""), 0, false, className, methodName, methodDescriptor);
         }
         catch (IOException e)
         {
@@ -51,11 +64,49 @@ public class ASMUtils
         }
     }
 
-    private static String[] toList(String str) {
+    public static String[] getInterfaces(final FileSystem jarFs, String className) throws RuntimeException {
+        try
+        {
+            ClassReader classReader = new ClassReader(jarFs.getPath(className + ".class").toUri().toURL().openStream());
+            InterfaceReadingClassVisitor interfaceReadingClassVisitor = new InterfaceReadingClassVisitor();
+            classReader.accept(interfaceReadingClassVisitor, ClassReader.SKIP_DEBUG);
+
+            return interfaceReadingClassVisitor.getInterfaces();
+        }
+        catch (FileNotFoundException e) {
+            return new String[0];
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException("Failed to get interfaces for " + className, e);
+        }
+    }
+
+    public static String getSuper(final FileSystem jarFs, String className) throws RuntimeException {
+        try
+        {
+            ClassReader classReader = new ClassReader(jarFs.getPath(className + ".class").toUri().toURL().openStream());
+            SuperClassReadingClassVisitor superClassReadingClassVisitor = new SuperClassReadingClassVisitor();
+            classReader.accept(superClassReadingClassVisitor, ClassReader.SKIP_DEBUG);
+
+            return superClassReadingClassVisitor.getSuperClass();
+        }
+        catch (FileNotFoundException e) {
+            return "java/lang/Object";
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException("Failed to get interfaces for " + className, e);
+        }
+    }
+
+    private static String[] toList(String str)
+    {
         //won't work correctly for all OSs /TODO: Figure this out
         String[] operations = str.split("[" + "\n" + "]");
 
-        for (int i = 0; i < operations.length; ++i) {
+        for (int i = 0; i < operations.length; ++i)
+        {
             operations[i] = operations[i].trim();
         }
 
@@ -67,42 +118,70 @@ public class ASMUtils
         private final String methodName;
         private final String methodDescriptor;
 
-        public MethodSelectorVisitor(ClassVisitor cv, String methodName, String methodDescriptor) {
+        private boolean found = false;
+        private int access = 0;
+
+        public MethodSelectorVisitor(ClassVisitor cv, String methodName, String methodDescriptor)
+        {
             super(Opcodes.ASM9, cv);
             this.methodName = methodName;
             this.methodDescriptor = methodDescriptor;
         }
 
         @Override
-        public MethodVisitor visitMethod(int access, String name, String desc,
-          String signature, String[] exceptions) {
+        public MethodVisitor visitMethod(
+          int access, String name, String desc,
+          String signature, String[] exceptions)
+        {
 
-            if (methodName.equals(name)) {
+            if (methodName.equals(name))
+            {
                 if (methodDescriptor == null)
+                {
+                    this.found = true;
+                    this.access = access;
                     return new MaxVisitFilterMethodVisitor(super.visitMethod(access, name, desc, signature, exceptions));
+                }
 
                 if (methodDescriptor.equals(desc))
+                {
+                    this.found = true;
+                    this.access = access;
                     return new MaxVisitFilterMethodVisitor(super.visitMethod(access, name, desc, signature, exceptions));
+                }
             }
 
             return null;
         }
+
+        public boolean isFound()
+        {
+            return found;
+        }
+
+        public int getAccess()
+        {
+            return access;
+        }
     }
 
-    private static class MaxVisitFilterMethodVisitor extends MethodVisitor {
-        public MaxVisitFilterMethodVisitor(MethodVisitor mv) {
+    private static class MaxVisitFilterMethodVisitor extends MethodVisitor
+    {
+        public MaxVisitFilterMethodVisitor(MethodVisitor mv)
+        {
             super(Opcodes.ASM9, mv);
         }
 
         @Override
-        public void visitMaxs(int maxStack, int maxLocals) {
+        public void visitMaxs(int maxStack, int maxLocals)
+        {
         }
     }
 
-
     private static class SourceCodeTextifier extends Printer
     {
-        public SourceCodeTextifier() {
+        public SourceCodeTextifier()
+        {
             super(Opcodes.ASM9);
         }
 
@@ -118,7 +197,13 @@ public class ASMUtils
         }
 
         @Override
-        public void visitSource(final String file, final String debug) {
+        public void visitSource(final String file, final String debug)
+        {
+        }
+
+        @Override
+        public void visitNestHost(final String nestHost)
+        {
         }
 
         @Override
@@ -138,7 +223,13 @@ public class ASMUtils
         }
 
         @Override
-        public void visitClassAttribute(final Attribute attr) {
+        public void visitClassAttribute(final Attribute attr)
+        {
+        }
+
+        @Override
+        public void visitNestMember(final String nestMember)
+        {
         }
 
         @Override
@@ -148,6 +239,12 @@ public class ASMUtils
           final String innerName,
           final int access)
         {
+        }
+
+        @Override
+        public Printer visitRecordComponent(final String name, final String descriptor, final String signature)
+        {
+            return new Textifier();
         }
 
         @Override
@@ -175,13 +272,14 @@ public class ASMUtils
         }
 
         @Override
-        public void visitClassEnd() {
+        public void visitClassEnd()
+        {
         }
 
         @Override
-        public void visit(final String name, final Object value) {
+        public void visit(final String name, final Object value)
+        {
         }
-
 
         @Override
         public void visitEnum(
@@ -207,7 +305,8 @@ public class ASMUtils
         }
 
         @Override
-        public void visitAnnotationEnd() {
+        public void visitAnnotationEnd()
+        {
         }
 
         @Override
@@ -219,16 +318,19 @@ public class ASMUtils
         }
 
         @Override
-        public void visitFieldAttribute(final Attribute attr) {
+        public void visitFieldAttribute(final Attribute attr)
+        {
             visitAttribute(attr);
         }
 
         @Override
-        public void visitFieldEnd() {
+        public void visitFieldEnd()
+        {
         }
 
         @Override
-        public Textifier visitAnnotationDefault() {
+        public Textifier visitAnnotationDefault()
+        {
             return new Textifier();
         }
 
@@ -250,11 +352,13 @@ public class ASMUtils
         }
 
         @Override
-        public void visitMethodAttribute(final Attribute attr) {
+        public void visitMethodAttribute(final Attribute attr)
+        {
         }
 
         @Override
-        public void visitCode() {
+        public void visitCode()
+        {
         }
 
         @Override
@@ -268,19 +372,23 @@ public class ASMUtils
         }
 
         @Override
-        public void visitInsn(final int opcode) {
+        public void visitInsn(final int opcode)
+        {
         }
 
         @Override
-        public void visitIntInsn(final int opcode, final int operand) {
+        public void visitIntInsn(final int opcode, final int operand)
+        {
         }
 
         @Override
-        public void visitVarInsn(final int opcode, final int var) {
+        public void visitVarInsn(final int opcode, final int var)
+        {
         }
 
         @Override
-        public void visitTypeInsn(final int opcode, final String type) {
+        public void visitTypeInsn(final int opcode, final String type)
+        {
         }
 
         @Override
@@ -311,19 +419,23 @@ public class ASMUtils
         }
 
         @Override
-        public void visitJumpInsn(final int opcode, final Label label) {
+        public void visitJumpInsn(final int opcode, final Label label)
+        {
         }
 
         @Override
-        public void visitLabel(final Label label) {
+        public void visitLabel(final Label label)
+        {
         }
 
         @Override
-        public void visitLdcInsn(final Object cst) {
+        public void visitLdcInsn(final Object cst)
+        {
         }
 
         @Override
-        public void visitIincInsn(final int var, final int increment) {
+        public void visitIincInsn(final int var, final int increment)
+        {
         }
 
         @Override
@@ -344,7 +456,8 @@ public class ASMUtils
         }
 
         @Override
-        public void visitMultiANewArrayInsn(final String desc, final int dims) {
+        public void visitMultiANewArrayInsn(final String desc, final int dims)
+        {
         }
 
         @Override
@@ -368,38 +481,32 @@ public class ASMUtils
         }
 
         @Override
-        public void visitLineNumber(final int line, final Label start) {
-        }
-
-        @Override
-        public void visitMaxs(final int maxStack, final int maxLocals) {
-        }
-
-        @Override
-        public void visitMethodEnd() {
-        }
-
-        public void visitAttribute(final Attribute attr) {
-        }
-
-        @Override
-        public void visitNestHost(final String nestHost)
+        public void visitLineNumber(final int line, final Label start)
         {
         }
 
         @Override
-        public void visitNestMember(final String nestMember)
+        public void visitMaxs(final int maxStack, final int maxLocals)
         {
         }
 
         @Override
-        public Printer visitRecordComponent(final String name, final String descriptor, final String signature)
+        public void visitMethodEnd()
         {
-            return new Textifier();
+        }
+
+        public void visitAttribute(final Attribute attr)
+        {
+        }
+
+        @Override
+        public void visitPermittedSubclass(final String permittedSubclass)
+        {
         }
     }
 
-    private static final class SuperClassReadingClassVisitor extends ClassVisitor {
+    private static final class SuperClassReadingClassVisitor extends ClassVisitor
+    {
         private String superClass = "";
 
         public SuperClassReadingClassVisitor()
@@ -417,6 +524,108 @@ public class ASMUtils
         public String getSuperClass()
         {
             return superClass;
+        }
+    }
+
+    private static final class InterfaceReadingClassVisitor extends ClassVisitor
+    {
+        private String[] interfaces = new String[0];
+
+        public InterfaceReadingClassVisitor()
+        {
+            super(Opcodes.ASM9);
+        }
+
+        @Override
+        public void visit(final int version, final int access, final String name, final String signature, final String superName, final String[] interfaces)
+        {
+            this.interfaces = interfaces;
+            super.visit(version, access, name, signature, superName, interfaces);
+        }
+
+        public String[] getInterfaces()
+        {
+            return interfaces;
+        }
+    }
+
+    public static final class ASMMethodData {
+        private final String[] byteCode;
+        private final int accessFlags;
+        private final boolean wasFound;
+
+        private final String className;
+        private final String methodName;
+        private final String methodDescriptor;
+
+        private ASMMethodData(
+          final String[] byteCode,
+          final int accessFlags,
+          final boolean wasFound,
+          final String className,
+          final String methodName,
+          final String methodDescriptor)
+        {
+            this.byteCode = byteCode;
+            this.accessFlags = accessFlags;
+            this.wasFound = wasFound;
+            this.className = className;
+            this.methodName = methodName;
+            this.methodDescriptor = methodDescriptor;
+        }
+
+        @Override
+        public boolean equals(final Object o)
+        {
+            if (this == o)
+            {
+                return true;
+            }
+            if (!(o instanceof ASMMethodData))
+            {
+                return false;
+            }
+
+            final ASMMethodData that = (ASMMethodData) o;
+
+            // Probably incorrect - comparing Object[] arrays with Arrays.equals
+            return Arrays.equals(getByteCode(), that.getByteCode());
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return Arrays.hashCode(getByteCode());
+        }
+
+        public String[] getByteCode()
+        {
+            return byteCode;
+        }
+
+        public int getAccessFlags()
+        {
+            return accessFlags;
+        }
+
+        public boolean wasFound()
+        {
+            return wasFound;
+        }
+
+        public String getClassName()
+        {
+            return className;
+        }
+
+        public String getMethodName()
+        {
+            return methodName;
+        }
+
+        public String getMethodDescriptor()
+        {
+            return methodDescriptor;
         }
     }
 }

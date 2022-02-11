@@ -24,7 +24,7 @@ import joptsimple.*;
 import joptsimple.util.PathConverter;
 import joptsimple.util.PathProperties;
 import net.minecraftforge.depigifier.matcher.IMatcher;
-import net.minecraftforge.depigifier.matcher.MethodByteCodeBasedMatcher;
+import net.minecraftforge.depigifier.matcher.LambdaMethodByteCodeBasedMatcher;
 import net.minecraftforge.depigifier.matcher.SignatureAndNameBasedMatcher;
 import net.minecraftforge.depigifier.model.Tree;
 import net.minecraftforge.srgutils.IMappingFile;
@@ -110,7 +110,7 @@ public class Unpig {
         IMatcher comp;
         if (argset.has(oldJarFile) && argset.has(newJarFile)) {
             System.out.println("Using method byte code based matcher.");
-            comp = new MethodByteCodeBasedMatcher(oldTree, newTree, output, argset.valueOf(oldJarFile), argset.valueOf(newJarFile));
+            comp = new LambdaMethodByteCodeBasedMatcher(oldTree, newTree, output, argset.valueOf(oldJarFile), argset.valueOf(newJarFile));
         }
         else
         {
