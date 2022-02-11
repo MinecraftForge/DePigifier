@@ -33,8 +33,10 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
     private final FileSystem newJarFs;
 
     private int rematchedLambdas = 0;
-    private int foundLambdas = 0;
     private int namedMappedLambdas = 0;
+    private int removedLambdas = 0;
+    private int newLambdas = 0;
+    private int foundLambdas = 0;
 
     public LambdaMethodByteCodeBasedMatcher(final Tree oldTree, final Tree newTree, final Path output, final Path oldJarPath, final Path newJarPath)
     {
@@ -63,7 +65,10 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
     protected void outputAdditionalStatistics()
     {
         super.outputAdditionalStatistics();
-        System.out.println("Lambda rematches: " + rematchedLambdas + "/" + namedMappedLambdas + "/" + foundLambdas);
+        System.out.println("Lambda: " + removedLambdas + "/" + newLambdas + "/" + foundLambdas);
+        System.out.println("==========================");
+        System.out.println("Via Name / Via ByteCode");
+        System.out.println("Matching: " + namedMappedLambdas + "/" + rematchedLambdas);
     }
 
     @Override
@@ -85,6 +90,9 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
           ArrayList::new,
           () -> signatureMissingMethods);
 
+        signatureMissingMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).forEach(missingMethods::add);
+        signatureNewMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).forEach(newMethods::add);
+
         final List<Method> signatureNewLambdas = new ArrayList<>();
         final List<Method> signatureMissingLambdas = new ArrayList<>();
 
@@ -104,8 +112,8 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
         final Set<String> postProcessingNewLambdas = signatureNewLambdas.stream().filter(m -> m.getOldName().contains("lambda$")).map(method -> method.getOldName() + method.getOldDesc()).collect(Collectors.toSet());
 
         final List<Method> remainderNewLambdas = new ArrayList<>();
-        final List<Method> missingNewLambdas = new ArrayList<>();
-        final List<Method> commonNewLambdas = new ArrayList<>();
+        final List<Method> missingOldLambdas = new ArrayList<>();
+        final List<Method> commonLambdas = new ArrayList<>();
 
         //Run the diff now on the missing lambdas.
         differenceSet(
@@ -116,13 +124,16 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
           sig -> methodGetter.apply(newClass, sig),
           forcedMethods::put,
           () -> remainderNewLambdas,
-          () -> commonNewLambdas,
-          () -> missingNewLambdas);
+          () -> commonLambdas,
+          () -> missingOldLambdas);
 
-        namedMappedLambdas += commonNewLambdas.size();
+        namedMappedLambdas += commonLambdas.size();
+
+        newLambdas += remainderNewLambdas.size();
+        removedLambdas += missingOldLambdas.size();
 
         newMethodTracked.addAll(remainderNewLambdas);
-        missingMethods.addAll(missingNewLambdas);
+        missingMethods.addAll(missingOldLambdas);
     }
 
     private void remapShiftedLambdaMethods(

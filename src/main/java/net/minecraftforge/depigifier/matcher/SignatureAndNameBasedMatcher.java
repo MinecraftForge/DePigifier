@@ -104,7 +104,7 @@ public class SignatureAndNameBasedMatcher implements IMatcher
           forEach(cl -> buildTSRG(cl, tsrgLines));
         Exceptions.sneak().run(() -> Files.write(tsrgOut, tsrgLines, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE));
         System.out.println("Fields : " + missingFields.size() + "/" + newFields.size() + "/" + newTree.getClasses().stream().mapToInt(c -> c.getFields().size()).sum());
-        System.out.println("Methods: " + missingMethods.size() + "/" + newMethods.size() + "/" + newTree.getClasses().stream().mapToInt(c -> c.getMethods().size()).sum());
+        System.out.println("Methods: " + missingMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).count() + "/" + newMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).count() + "/" + newTree.getClasses().stream().mapToLong(c -> c.getMethods().stream().filter(m -> !m.getOldName().contains("lambda$")).count()).sum());
 
         outputAdditionalStatistics();
 
