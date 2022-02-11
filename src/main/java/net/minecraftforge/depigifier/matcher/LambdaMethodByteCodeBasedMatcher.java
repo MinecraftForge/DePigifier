@@ -33,6 +33,8 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
     private final FileSystem newJarFs;
 
     private int rematchedLambdas = 0;
+    private int foundLambdas = 0;
+    private int namedMappedLambdas = 0;
 
     public LambdaMethodByteCodeBasedMatcher(final Tree oldTree, final Tree newTree, final Path output, final Path oldJarPath, final Path newJarPath)
     {
@@ -61,7 +63,7 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
     protected void outputAdditionalStatistics()
     {
         super.outputAdditionalStatistics();
-        System.out.println("Lambda rematches: " + rematchedLambdas);
+        System.out.println("Lambda rematches: " + rematchedLambdas + "/" + namedMappedLambdas + "/" + foundLambdas);
     }
 
     @Override
@@ -86,6 +88,8 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
         final List<Method> signatureNewLambdas = new ArrayList<>();
         final List<Method> signatureMissingLambdas = new ArrayList<>();
 
+        foundLambdas += oldClass.getMethodSignatures().stream().filter(sig -> sig.contains("lambda$")).count();
+
         remapShiftedLambdaMethods(
           oldClass.getMethodSignatures().stream().filter(sig -> sig.contains("lambda$")).collect(Collectors.toSet()),
           newClass.getMethodSignatures().stream().filter(sig -> sig.contains("lambda$")).collect(Collectors.toSet()),
@@ -101,6 +105,7 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
 
         final List<Method> remainderNewLambdas = new ArrayList<>();
         final List<Method> missingNewLambdas = new ArrayList<>();
+        final List<Method> commonNewLambdas = new ArrayList<>();
 
         //Run the diff now on the missing lambdas.
         differenceSet(
@@ -111,8 +116,10 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
           sig -> methodGetter.apply(newClass, sig),
           forcedMethods::put,
           () -> remainderNewLambdas,
-          ArrayList::new,
+          () -> commonNewLambdas,
           () -> missingNewLambdas);
+
+        namedMappedLambdas += commonNewLambdas.size();
 
         newMethodTracked.addAll(remainderNewLambdas);
         missingMethods.addAll(missingNewLambdas);
