@@ -8,7 +8,6 @@ import net.minecraftforge.depigifier.model.Method;
 import net.minecraftforge.depigifier.model.Tree;
 import net.minecraftforge.depigifier.util.ASMUtils;
 import net.minecraftforge.depigifier.util.GroupingUtils;
-import org.checkerframework.checker.units.qual.A;
 import org.objectweb.asm.Opcodes;
 
 import java.io.IOException;
@@ -20,7 +19,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
+public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
 {
     private static final Set<String> SPECIAL_METHOD_SIGNATURES = ImmutableSet.of(
       "toString()Ljava/lang/String;"
@@ -38,7 +37,7 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
     private int newLambdas = 0;
     private int foundLambdas = 0;
 
-    public LambdaMethodByteCodeBasedMatcher(final Tree oldTree, final Tree newTree, final Path output, final Path oldJarPath, final Path newJarPath)
+    public MethodByteCodeBasedMatcher(final Tree oldTree, final Tree newTree, final Path output, final Path oldJarPath, final Path newJarPath)
     {
         super(oldTree, newTree, output);
 
@@ -90,9 +89,6 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
           ArrayList::new,
           () -> signatureMissingMethods);
 
-        signatureMissingMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).forEach(missingMethods::add);
-        signatureNewMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).forEach(newMethods::add);
-
         final List<Method> signatureNewLambdas = new ArrayList<>();
         final List<Method> signatureMissingLambdas = new ArrayList<>();
 
@@ -131,6 +127,19 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
 
         newLambdas += remainderNewLambdas.size();
         removedLambdas += missingOldLambdas.size();
+
+        final List<Method> noneRemappableOldMethods = new ArrayList<>();
+        final List<Method> notRemappedNewMethods = new ArrayList<>();
+
+        attemptMethodRematching(
+          signatureMissingMethods,
+          signatureNewMethods,
+          notRemappedNewMethods,
+          noneRemappableOldMethods
+        );
+
+        noneRemappableOldMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).forEach(missingMethods::add);
+        notRemappedNewMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).forEach(newMethodTracked::add);
 
         newMethodTracked.addAll(remainderNewLambdas);
         missingMethods.addAll(missingOldLambdas);
@@ -189,7 +198,7 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
             }
         });
 
-        attemptLambdaRematching(oldLambdaMethods, newLambdaMethods, signatureNewMethods, signatureMissingMethods);
+        attemptMethodRematching(oldLambdaMethods, newLambdaMethods, signatureNewMethods, signatureMissingMethods);
     }
 
     private boolean handleLambdaShifting(final List<Method> oldLambdaPrefixed, final List<Method> newLambdaPrefixed)
@@ -257,27 +266,27 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
 
 
 
-    private void attemptLambdaRematching(
-      final List<Method> oldLambdaMethods,
-      final List<Method> newLambdaMethods,
+    private void attemptMethodRematching(
+      final List<Method> oldMethods,
+      final List<Method> newMethods,
       final List<Method> signatureNewMethods,
       final List<Method> signatureMissingMethods)
     {
-        final Map<Method, ASMUtils.ASMMethodData> oldMethodContents = oldLambdaMethods
+        final Map<Method, ASMUtils.ASMMethodData> oldMethodContents = oldMethods
           .stream()
           .collect(Collectors.toMap(
             Function.identity(),
             method -> ASMUtils.getMethod(oldJarFs, method.getOwner().getNewName(), method.getNewName(), method.getNewDesc(this.oldTree))
           ));
 
-        final Multimap<ASMUtils.ASMMethodData, Method> newMethodContents = newLambdaMethods
+        final Multimap<ASMUtils.ASMMethodData, Method> newMethodContents = newMethods
           .stream()
           .collect(ImmutableListMultimap.toImmutableListMultimap(
             method -> ASMUtils.getMethod(newJarFs, method.getOwner().getNewName(), Objects.requireNonNull(method).getNewName(), method.getNewDesc(this.newTree)),
             Function.identity()
           ));
 
-        oldLambdaMethods.removeIf(missingMethod -> {
+        oldMethods.removeIf(missingMethod -> {
             final ASMUtils.ASMMethodData oldMethod = oldMethodContents.get(missingMethod);
 
             final List<ASMUtils.ASMMethodData> matchingCandidates = newMethodContents.keys()
@@ -298,13 +307,13 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
                 if (newMethodCandidates.size() == 1)
                 {
                     final Method newMethodCandidate = newMethodCandidates.iterator().next();
-                    if (newLambdaMethods.contains(newMethodCandidate))
+                    if (newMethods.contains(newMethodCandidate))
                     {
                         forcedMethods.put(newMethodCandidate, missingMethod);
 
                         rematchedLambdas++;
 
-                        newLambdaMethods.remove(newMethodCandidate);
+                        newMethods.remove(newMethodCandidate);
                         return true;
                     }
                 }
@@ -313,8 +322,8 @@ public class LambdaMethodByteCodeBasedMatcher extends SignatureAndNameBasedMatch
             return false;
         });
 
-        signatureMissingMethods.addAll(oldLambdaMethods);
-        signatureNewMethods.addAll(newLambdaMethods);
+        signatureMissingMethods.addAll(oldMethods);
+        signatureNewMethods.addAll(newMethods);
     }
 
     private int getLambdaIndex(final Method lambda)
