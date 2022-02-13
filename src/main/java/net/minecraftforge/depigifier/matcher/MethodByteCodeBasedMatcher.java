@@ -31,11 +31,14 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
     private final FileSystem oldJarFs;
     private final FileSystem newJarFs;
 
-    private int rematchedLambdas = 0;
-    private int namedMappedLambdas = 0;
+    private int byteCodeMappedLambdas = 0;
+    private int namedMappedLambdas    = 0;
     private int removedLambdas = 0;
     private int newLambdas = 0;
     private int foundLambdas = 0;
+
+    private int nameMappedMethods = 0;
+    private int byteCodeMappedMethods = 0;
 
     public MethodByteCodeBasedMatcher(final Tree oldTree, final Tree newTree, final Path output, final Path oldJarPath, final Path newJarPath)
     {
@@ -66,8 +69,9 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
         super.outputAdditionalStatistics();
         System.out.println("Lambda: " + removedLambdas + "/" + newLambdas + "/" + foundLambdas);
         System.out.println("==========================");
-        System.out.println("Via Name / Via ByteCode");
-        System.out.println("Matching: " + namedMappedLambdas + "/" + rematchedLambdas);
+        System.out.println("Matching: Via Name / Via ByteCode");
+        System.out.println("Method: " + nameMappedMethods + "/" + byteCodeMappedMethods);
+        System.out.println("Lambda: " + namedMappedLambdas + "/" + byteCodeMappedLambdas);
     }
 
     @Override
@@ -76,6 +80,8 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
     {
         final List<Method> signatureNewMethods = new ArrayList<>();
         final List<Method> signatureMissingMethods = new ArrayList<>();
+
+        final List<Method> nameBasedMappedMethods = new ArrayList<>();
 
         //Run the diff only on the none lambda methods.
         differenceSet(
@@ -86,8 +92,10 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
           sig -> methodGetter.apply(newClass, sig),
           forcedMethods::put,
           () -> signatureNewMethods,
-          ArrayList::new,
+          () -> nameBasedMappedMethods,
           () -> signatureMissingMethods);
+
+        nameMappedMethods += nameBasedMappedMethods.size();
 
         final List<Method> signatureNewLambdas = new ArrayList<>();
         final List<Method> signatureMissingLambdas = new ArrayList<>();
@@ -131,12 +139,18 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
         final List<Method> noneRemappableOldMethods = new ArrayList<>();
         final List<Method> notRemappedNewMethods = new ArrayList<>();
 
+        final int notNameMappedMethodCount = signatureMissingMethods.size();
+
         attemptMethodRematching(
           signatureMissingMethods,
           signatureNewMethods,
           notRemappedNewMethods,
-          noneRemappableOldMethods
+          noneRemappableOldMethods,
+          false
         );
+
+        final int byteCodeMappedMethodCount = notNameMappedMethodCount - signatureMissingMethods.size();
+        byteCodeMappedMethods += byteCodeMappedMethodCount;
 
         noneRemappableOldMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).forEach(missingMethods::add);
         notRemappedNewMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).forEach(newMethodTracked::add);
@@ -178,7 +192,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
                 oldLambdaMethods.removeAll(oldLambdaPrefixed);
                 newLambdaMethods.removeAll(newLambdaPrefixed);
 
-                rematchedLambdas += oldLambdaPrefixed.size();
+                byteCodeMappedLambdas += oldLambdaPrefixed.size();
             }
             else
             {
@@ -198,7 +212,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
             }
         });
 
-        attemptMethodRematching(oldLambdaMethods, newLambdaMethods, signatureNewMethods, signatureMissingMethods);
+        attemptMethodRematching(oldLambdaMethods, newLambdaMethods, signatureNewMethods, signatureMissingMethods, true);
     }
 
     private boolean handleLambdaShifting(final List<Method> oldLambdaPrefixed, final List<Method> newLambdaPrefixed)
@@ -214,7 +228,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
                 final Method oldLambda = oldLambdaPrefixedSorted.get(i);
                 final Method newLambda = newLambdaPrefixedSorted.get(i);
 
-                if (!doCompareMethodsUsingStaticContentAnalysis(oldLambda, newLambda))
+                if (!doCompareMethodsUsingStaticContentAnalysis(oldLambda, newLambda, true))
                 {
                     allMatching = false;
                 }
@@ -245,7 +259,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
         {
             Method matchingLambda = null;
             for (final Method newLambda : newLambdaPrefixedSorted) {
-                if (doCompareMethodsUsingStaticContentAnalysis(oldLambda, newLambda))
+                if (doCompareMethodsUsingStaticContentAnalysis(oldLambda, newLambda, true))
                 {
                     matchingLambda = newLambda;
                     break;
@@ -259,18 +273,17 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
                 newLambdasMapped.add(matchingLambda);
 
                 forcedMethods.put(matchingLambda, oldLambda);
-                rematchedLambdas++;
+                byteCodeMappedLambdas++;
             }
         }
     }
-
-
 
     private void attemptMethodRematching(
       final List<Method> oldMethods,
       final List<Method> newMethods,
       final List<Method> signatureNewMethods,
-      final List<Method> signatureMissingMethods)
+      final List<Method> signatureMissingMethods,
+      final boolean checkLocalVariableOrder)
     {
         final Map<Method, ASMUtils.ASMMethodData> oldMethodContents = oldMethods
           .stream()
@@ -291,7 +304,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
 
             final List<ASMUtils.ASMMethodData> matchingCandidates = newMethodContents.keys()
               .stream()
-              .filter(newMethod -> doCompareMethodsUsingStaticContentAnalysis(oldMethod, newMethod))
+              .filter(newMethod -> doCompareMethodsUsingStaticContentAnalysis(oldMethod, newMethod, checkLocalVariableOrder))
               .collect(Collectors.toList());
 
             if (matchingCandidates.size() > 1)
@@ -311,7 +324,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
                     {
                         forcedMethods.put(newMethodCandidate, missingMethod);
 
-                        rematchedLambdas++;
+                        byteCodeMappedLambdas++;
 
                         newMethods.remove(newMethodCandidate);
                         return true;
@@ -332,24 +345,26 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
         return Integer.parseInt(remainedIndex);
     }
 
-    private boolean doCompareMethodsUsingStaticContentAnalysis(final Method oldMethod, final Method newMethod)
+    private boolean doCompareMethodsUsingStaticContentAnalysis(final Method oldMethod, final Method newMethod, final boolean matchLocalVariableTableOrder)
     {
         return doCompareMethodsUsingStaticContentAnalysis(
           ASMUtils.getMethod(oldJarFs, oldMethod.getOwner().getNewName(), oldMethod.getNewName(), oldMethod.getNewDesc(this.oldTree)),
           ASMUtils.getMethod(newJarFs, newMethod.getOwner().getNewName(), newMethod.getNewName(), newMethod.getNewDesc(this.newTree)),
           new HashSet<>(),
           new HashSet<>(),
+          matchLocalVariableTableOrder,
           0
         );
     }
 
-    private boolean doCompareMethodsUsingStaticContentAnalysis(final ASMUtils.ASMMethodData oldMethod, final ASMUtils.ASMMethodData newMethod)
+    private boolean doCompareMethodsUsingStaticContentAnalysis(final ASMUtils.ASMMethodData oldMethod, final ASMUtils.ASMMethodData newMethod, final boolean matchLocalVariableTableOrder)
     {
         return doCompareMethodsUsingStaticContentAnalysis(
           oldMethod,
           newMethod,
           new HashSet<>(),
           new HashSet<>(),
+          matchLocalVariableTableOrder,
           0
         );
     }
@@ -359,6 +374,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
       final ASMUtils.ASMMethodData newMethod,
       final Set<String> recursivelyAnalyzedOldMethods,
       final Set<String> recursivelyAnalyzedNewMethods,
+      final boolean matchLocalVariableTableOrder,
       final int recursionDepth)
     {
         if (oldMethod == null || newMethod == null)
@@ -395,7 +411,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
 
             if (!Arrays.equals(oldStatements, newStatements))
             {
-                if (!doCompareUnequalMethodByteCodeStatement(oldStatements, newStatements, recursivelyAnalyzedOldMethods, recursivelyAnalyzedNewMethods, recursionDepth))
+                if (!doCompareUnequalMethodByteCodeStatement(oldStatements, newStatements, recursivelyAnalyzedOldMethods, recursivelyAnalyzedNewMethods, matchLocalVariableTableOrder, recursionDepth))
                 {
                     return false;
                 }
@@ -434,6 +450,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
       final String[] newStatement,
       final Set<String> recursivelyAnalyzedOldMethods,
       final Set<String> recursivelyAnalyzedNewMethods,
+      final boolean matchLocalVariableTableOrder,
       final int recursionDepth)
     {
         final String oldInitialStatement = oldStatement[0];
@@ -463,6 +480,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
               newInitialStatement,
               recursivelyAnalyzedOldMethods,
               recursivelyAnalyzedNewMethods,
+              matchLocalVariableTableOrder,
               recursionDepth + 1,
               false);
         }
@@ -475,6 +493,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
               newInitialStatement,
               recursivelyAnalyzedOldMethods,
               recursivelyAnalyzedNewMethods,
+              matchLocalVariableTableOrder,
               recursionDepth + 1,
               false);
         }
@@ -487,6 +506,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
               newInitialStatement,
               recursivelyAnalyzedOldMethods,
               recursivelyAnalyzedNewMethods,
+              matchLocalVariableTableOrder,
               recursionDepth + 1,
               false);
         }
@@ -498,6 +518,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
               newStatement,
               recursivelyAnalyzedOldMethods,
               recursivelyAnalyzedNewMethods,
+              matchLocalVariableTableOrder,
               recursionDepth + 1);
         }
 
@@ -552,6 +573,18 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
             return doCompareNewArrayStatements("ANEWARRAY", oldInitialStatement, newInitialStatement);
         }
 
+        //LVT Operations can differ between versions, but should not be a problem.
+        //However, we only disable this in a last resort style of comparison.
+        if (!matchLocalVariableTableOrder) {
+            if (oldInitialStatement.startsWith("ILOAD") && newInitialStatement.startsWith("ILOAD")) {
+                return true;
+            }
+
+            if (oldInitialStatement.startsWith("ISTORE") && newInitialStatement.startsWith("ISTORE")) {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -561,6 +594,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
       final String newStatement,
       final Set<String> recursivelyAnalyzedOldMethods,
       final Set<String> recursivelyAnalyzedNewMethods,
+      final boolean matchLocalVariableTableOrder,
       final int recursionDepth,
       boolean fromDynamicInvoke)
     {
@@ -624,6 +658,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
           ASMUtils.getMethod(this.newJarFs, newClass, newName, newDescriptor),
           recursivelyAnalyzedOldMethods,
           recursivelyAnalyzedNewMethods,
+          matchLocalVariableTableOrder,
           recursionDepth
         );
     }
@@ -633,6 +668,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
       final String[] newStatement,
       final Set<String> recursivelyAnalyzedOldMethods,
       final Set<String> recursivelyAnalyzedNewMethods,
+      final boolean matchLocalVariableTableOrder,
       final int recursionDepth)
     {
         final List<String> oldStatementList = Arrays.asList(oldStatement);
@@ -680,6 +716,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
           newHandleTargetInvocation.substring(0, newHandleTargetInvocation.lastIndexOf(",")),
           recursivelyAnalyzedOldMethods,
           recursivelyAnalyzedNewMethods,
+          matchLocalVariableTableOrder,
           recursionDepth,
           true);
     }
