@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.IntConsumer;
 import java.util.stream.Collectors;
 
 public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
@@ -109,7 +110,8 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
           newClass,
           methodGetter,
           signatureNewLambdas,
-          signatureMissingLambdas
+          signatureMissingLambdas,
+          value -> byteCodeMappedLambdas += value
         );
 
         final Set<String> postProcessingOldLambdas = signatureMissingLambdas.stream().filter(m -> m.getOldName().contains("lambda$")).map(method -> method.getOldName() + method.getOldDesc()).collect(Collectors.toSet());
@@ -139,18 +141,14 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
         final List<Method> noneRemappableOldMethods = new ArrayList<>();
         final List<Method> notRemappedNewMethods = new ArrayList<>();
 
-        final int notNameMappedMethodCount = signatureMissingMethods.size();
-
         attemptMethodRematching(
           signatureMissingMethods,
           signatureNewMethods,
           notRemappedNewMethods,
           noneRemappableOldMethods,
-          false
+          false,
+          value -> byteCodeMappedMethods += value
         );
-
-        final int byteCodeMappedMethodCount = notNameMappedMethodCount - signatureMissingMethods.size();
-        byteCodeMappedMethods += byteCodeMappedMethodCount;
 
         noneRemappableOldMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).forEach(missingMethods::add);
         notRemappedNewMethods.stream().filter(m -> !m.getOldName().contains("lambda$")).forEach(newMethodTracked::add);
@@ -166,7 +164,8 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
       final Class newClass,
       final BiFunction<Class, String, Method> methodGetter,
       final List<Method> signatureNewMethods,
-      final List<Method> signatureMissingMethods
+      final List<Method> signatureMissingMethods,
+      final IntConsumer successCounter
     )
     {
         final List<Method> oldLambdaMethods = oldLambdaSignatures.stream().map(sig -> methodGetter.apply(oldClass, sig)).collect(Collectors.toList());
@@ -192,14 +191,14 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
                 oldLambdaMethods.removeAll(oldLambdaPrefixed);
                 newLambdaMethods.removeAll(newLambdaPrefixed);
 
-                byteCodeMappedLambdas += oldLambdaPrefixed.size();
+                successCounter.accept(oldLambdaPrefixed.size());
             }
             else
             {
                 final List<Method> oldLambdasMatched = new ArrayList<>();
                 final List<Method> newLambdasMatched = new ArrayList<>();
 
-                handleLambdaNameChanging(oldLambdaPrefixed, newLambdaPrefixed, oldLambdasMatched, newLambdasMatched);
+                handleLambdaNameChanging(oldLambdaPrefixed, newLambdaPrefixed, oldLambdasMatched, newLambdasMatched, successCounter);
 
                 if (oldLambdasMatched.size() > 0) {
                     if (oldLambdasMatched.size() != newLambdasMatched.size()) {
@@ -212,7 +211,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
             }
         });
 
-        attemptMethodRematching(oldLambdaMethods, newLambdaMethods, signatureNewMethods, signatureMissingMethods, true);
+        attemptMethodRematching(oldLambdaMethods, newLambdaMethods, signatureNewMethods, signatureMissingMethods, true, successCounter);
     }
 
     private boolean handleLambdaShifting(final List<Method> oldLambdaPrefixed, final List<Method> newLambdaPrefixed)
@@ -250,7 +249,12 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
         return false;
     }
 
-    private void handleLambdaNameChanging(final List<Method> oldLambdaPrefixed, final List<Method> newLambdaPrefixed, final List<Method> oldLambdasMapped, final List<Method> newLambdasMapped)
+    private void handleLambdaNameChanging(
+      final List<Method> oldLambdaPrefixed,
+      final List<Method> newLambdaPrefixed,
+      final List<Method> oldLambdasMapped,
+      final List<Method> newLambdasMapped,
+      final IntConsumer successCounter)
     {
         final List<Method> oldLambdaPrefixedSorted = oldLambdaPrefixed.stream().sorted(Comparator.comparing(this::getLambdaIndex)).collect(Collectors.toList());
         final List<Method> newLambdaPrefixedSorted = newLambdaPrefixed.stream().sorted(Comparator.comparing(this::getLambdaIndex)).collect(Collectors.toList());
@@ -273,7 +277,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
                 newLambdasMapped.add(matchingLambda);
 
                 forcedMethods.put(matchingLambda, oldLambda);
-                byteCodeMappedLambdas++;
+                successCounter.accept(1);
             }
         }
     }
@@ -283,7 +287,8 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
       final List<Method> newMethods,
       final List<Method> signatureNewMethods,
       final List<Method> signatureMissingMethods,
-      final boolean checkLocalVariableOrder)
+      final boolean checkLocalVariableOrder,
+      final IntConsumer successCounter)
     {
         final Map<Method, ASMUtils.ASMMethodData> oldMethodContents = oldMethods
           .stream()
@@ -324,7 +329,7 @@ public class MethodByteCodeBasedMatcher extends SignatureAndNameBasedMatcher
                     {
                         forcedMethods.put(newMethodCandidate, missingMethod);
 
-                        byteCodeMappedLambdas++;
+                        successCounter.accept(1);
 
                         newMethods.remove(newMethodCandidate);
                         return true;
