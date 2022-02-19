@@ -27,6 +27,7 @@ import java.util.Set;
 
 import net.minecraftforge.depigifier.IMapper;
 import net.minecraftforge.srgutils.IMappingFile;
+import org.objectweb.asm.Type;
 
 import java.util.Map;
 
@@ -94,6 +95,60 @@ public class Tree implements IMapper {
     public String mapMethod(String cls, String method, String desc) {
         Class _cls = o2nClasses.get(cls);
         return _cls == null ? method : _cls.mapMethod(method, desc);
+    }
+
+    public String unmapClass(String cls) {
+        Class _cls = n2oClasses.get(cls);
+        if (_cls != null)
+            return _cls.getOldName();
+        int idx = cls.lastIndexOf('$');
+        if (idx > 0)
+            return unmapClass(cls.substring(0, idx)) + cls.substring(idx);
+
+        return cls; //TODO: Packages
+    }
+
+    public String unmapField(String cls, String field) {
+        Class _cls = n2oClasses.get(cls);
+        return _cls == null ? field : _cls.unmapField(field);
+    }
+
+    public String unmapMethod(String cls, String method, String desc) {
+        Class _cls = n2oClasses.get(cls);
+        return _cls == null ? method : _cls.unmapMethod(method, mapDescriptor(desc));
+    }
+
+    public String unmapDescriptor(String desc) {
+        return unmapDescriptor(Type.getArgumentTypes(desc), Type.getReturnType(desc));
+    }
+
+    public String unmapDescriptor(Type[] args, Type ret) {
+        StringBuilder buf = new StringBuilder();
+        buf.append('(');
+        for (Type arg : args) {
+            if (arg.getSort() == Type.ARRAY) {
+                for (int x = 0; x < arg.getDimensions(); x++)
+                    buf.append('[');
+                arg = arg.getElementType();
+            }
+            if (arg.getSort() == Type.OBJECT)
+                buf.append('L').append(unmapClass(arg.getInternalName())).append(';');
+            else
+                buf.append(arg.getDescriptor());
+        }
+        buf.append(')');
+
+        if (ret.getSort() == Type.ARRAY) {
+            for (int x = 0; x < ret.getDimensions(); x++)
+                buf.append('[');
+            ret = ret.getElementType();
+        }
+        if (ret.getSort() == Type.OBJECT)
+            buf.append('L').append(unmapClass(ret.getInternalName())).append(';');
+        else
+            buf.append(ret.getDescriptor());
+
+        return buf.toString();
     }
 
     //Map modifiers are intentionally private you should use the rename functions in the associated objects as they will update all cached lookups.

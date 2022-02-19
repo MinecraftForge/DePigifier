@@ -23,6 +23,9 @@ import com.machinezoo.noexception.Exceptions;
 import joptsimple.*;
 import joptsimple.util.PathConverter;
 import joptsimple.util.PathProperties;
+import net.minecraftforge.depigifier.matcher.IMatcher;
+import net.minecraftforge.depigifier.matcher.MethodByteCodeBasedMatcher;
+import net.minecraftforge.depigifier.matcher.SignatureAndNameBasedMatcher;
 import net.minecraftforge.depigifier.model.Tree;
 import net.minecraftforge.srgutils.IMappingFile;
 
@@ -53,6 +56,12 @@ public class Unpig {
                 withRequiredArg().
                 withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE)).
                 required();
+        final ArgumentAcceptingOptionSpec<Path> oldJarFile = optionParser.accepts("oldJar", "Old minecraft jar file").
+          withRequiredArg().
+          withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE));
+        final ArgumentAcceptingOptionSpec<Path> newJarFile = optionParser.accepts("newJar", "New minecraft jar file").
+          withRequiredArg().
+          withValuesConvertedBy(new PathConverter(PathProperties.FILE_EXISTING, PathProperties.READABLE));
         final ArgumentAcceptingOptionSpec<Path> outDir = optionParser.accepts("out", "Directory to output to").
                 withRequiredArg().
                 withValuesConvertedBy(new PathConverter()).
@@ -98,7 +107,15 @@ public class Unpig {
             }
         }
 
-        Matcher comp = new Matcher(oldTree, newTree, output);
+        IMatcher comp;
+        if (argset.has(oldJarFile) && argset.has(newJarFile)) {
+            System.out.println("Using method byte code based matcher.");
+            comp = new MethodByteCodeBasedMatcher(oldTree, newTree, output, argset.valueOf(oldJarFile), argset.valueOf(newJarFile));
+        }
+        else
+        {
+            comp = new SignatureAndNameBasedMatcher(oldTree, newTree, output);
+        }
 
         if (argset.has(manualMapFile)) {
             final Tree manualMappings = Tree.from(IMappingFile.load(manualMap.toFile()), false);
